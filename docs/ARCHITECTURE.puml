@@ -1,0 +1,456 @@
+@startuml ProxyHub_Architecture
+!theme plain
+skinparam backgroundColor #FAFAFA
+skinparam defaultFontName Inter
+skinparam defaultFontSize 11
+skinparam roundCorner 8
+skinparam shadowing false
+skinparam packageStyle rectangle
+
+title ProxyHub Platform Architecture\n2026-05-07
+
+' ============================================================
+' ACTORS
+' ============================================================
+
+actor "Customer" as customer
+actor "Admin" as admin
+actor "Stripe" as stripe_actor #LightCoral
+
+' ============================================================
+' INFRASTRUCTURE
+' ============================================================
+
+package "VPS  72.62.117.94" as vps #F0F0FF {
+
+  node "Caddy\n:80 / :443" as caddy #E8E8FF {
+  }
+
+  node "Next.js App\n:3000 (standalone)" as app #E8FFE8 {
+
+    package "Middleware" as mw {
+      component "Auth Guard" as auth_guard
+      note right of auth_guard
+        Protects /dashboard/*
+        and /admin/*
+      end note
+    }
+
+    package "Auth Providers" as auth_pkg #FFFFF0 {
+      component "access-code" as auth_code
+      component "admin-password" as auth_admin
+      component "wallet (ETH)" as auth_wallet
+    }
+
+    package "Customer Dashboard" as cust_dash #E8FFE8 {
+      component "/dashboard" as pg_overview
+      component "/dashboard/keys" as pg_keys
+      component "/dashboard/purchase" as pg_purchase
+      component "/dashboard/settings" as pg_settings
+    }
+
+    package "Admin Panel" as admin_dash #FFE8E8 {
+      component "/admin/accounts" as pg_accounts
+      component "/admin/accounts/[id]" as pg_account_detail
+      component "/admin/audit" as pg_audit
+    }
+
+    package "API Routes" as api_routes #FFFDE8 {
+
+      package "Auth APIs" {
+        component "POST /api/auth/signup" as api_signup
+        component "POST /api/auth/wallet-challenge" as api_wallet_challenge
+      }
+
+      package "Customer APIs" {
+        component "GET /api/balance" as api_balance_get
+        component "POST /api/balance/purchase" as api_balance_purchase
+        component "GET /api/pool/keys" as api_keys_get
+        component "PATCH /api/pool/keys" as api_keys_patch
+        component "GET /api/pool/stock" as api_pool_stock
+        component "POST /api/pool/proxy-url" as api_proxy_url
+        component "GET /api/user/profile" as api_profile
+        component "Wallet CRUD" as api_wallet_crud
+      }
+
+      package "Admin APIs" {
+        component "CRUD /api/admin/accounts" as api_admin_accounts
+        component "POST /api/admin/balance" as api_admin_balance
+      }
+
+      package "Stripe APIs" {
+        component "POST /api/stripe/checkout" as api_stripe_checkout
+        component "POST /api/stripe/webhook" as api_stripe_webhook
+      }
+    }
+
+    package "Lib Layer" as lib #F8F8F8 {
+      component "auth.ts\n3 providers + helpers" as lib_auth
+      component "db.ts\nPG pool, query()" as lib_db
+      component "proxies.ts\nSDK singleton" as lib_proxies
+      component "stripe.ts\nStripe singleton" as lib_stripe
+      component "wallet.ts\nHMAC + viem verify" as lib_wallet
+      component "config.ts\nBrand, plans, countries" as lib_config
+    }
+  }
+
+  database "PostgreSQL 17\n8 tables" as pg #E8E8FF {
+    collections "users" as t_users
+    collections "customers" as t_customers
+    collections "wallet_links" as t_wallets
+    collections "wallet_challenges" as t_challenges
+    collections "login_attempts" as t_login
+    collections "balance_transactions" as t_balance_tx
+    collections "purchases" as t_purchases
+    collections "audit_log" as t_audit
+    collections "webhook_events" as t_webhook
+  }
+}
+
+cloud "Proxies.sx" as proxies_cloud #FFF0E0 {
+  component "REST API\napi.proxies.sx/v1" as proxies_api
+  component "Gateway\ngw.proxies.sx\n:7000 HTTP\n:7001 SOCKS5" as proxies_gw
+}
+
+cloud "Stripe" as stripe_cloud #FFE0E0 {
+  component "Checkout API" as stripe_api
+  component "Webhooks" as stripe_webhooks
+}
+
+' ============================================================
+' CONNECTIONS — External
+' ============================================================
+
+customer --> caddy : HTTP requests
+admin --> caddy : HTTP requests
+caddy --> app : reverse proxy
+
+customer --> proxies_gw : proxy traffic\n(direct, using PAK URL)
+
+stripe_actor --> api_stripe_webhook : webhook events
+
+' ============================================================
+' CONNECTIONS — App to External
+' ============================================================
+
+lib_proxies --> proxies_api : PAK CRUD\ngetStock()
+lib_stripe --> stripe_api : Checkout sessions
+api_stripe_webhook ..> stripe_webhooks : signature verify
+
+' ============================================================
+' CONNECTIONS — App Internal
+' ============================================================
+
+auth_guard --> lib_auth
+auth_code --> lib_auth
+auth_admin --> lib_auth
+auth_wallet --> lib_wallet
+auth_wallet --> lib_auth
+
+api_balance_purchase --> lib_proxies : create/topUp PAK
+api_keys_get --> lib_proxies : get PAK + traffic
+api_keys_patch --> lib_proxies : toggle/regenerate/delete
+api_pool_stock --> lib_proxies : getStock()
+api_proxy_url --> lib_proxies : buildProxyUrl()
+api_stripe_checkout --> lib_stripe
+api_stripe_webhook --> lib_stripe
+api_stripe_webhook --> lib_proxies : create/topUp PAK
+
+lib_auth --> lib_db
+lib_db --> pg
+
+api_routes --> lib_db : all queries
+api_routes --> lib_config : plans, countries
+
+@enduml
+
+
+' ============================================================
+' DATABASE ER DIAGRAM
+' ============================================================
+
+@startuml ProxyHub_ERD
+!theme plain
+skinparam backgroundColor #FAFAFA
+skinparam defaultFontName Inter
+skinparam defaultFontSize 10
+skinparam roundCorner 8
+skinparam shadowing false
+skinparam linetype ortho
+
+title ProxyHub Database Schema (ERD)
+
+entity "users" as users {
+  * **id** : UUID <<PK>>
+  --
+  * label : TEXT
+  email : TEXT
+  * access_code : TEXT <<UNIQUE>>
+  * role : TEXT {customer, admin}
+  * balance_usd : NUMERIC(10,2)
+  * enabled : BOOLEAN
+  * created_at : TIMESTAMPTZ
+  * updated_at : TIMESTAMPTZ
+}
+
+entity "customers" as customers {
+  * **id** : UUID <<PK>>
+  --
+  * user_id : UUID <<FK, UNIQUE>>
+  pak_key_id : TEXT
+  pak_key : TEXT
+  traffic_cap_gb : NUMERIC(10,2)
+  traffic_used_gb : NUMERIC(10,2)
+  plan_id : TEXT
+  expires_at : TIMESTAMPTZ
+  * created_at : TIMESTAMPTZ
+  * updated_at : TIMESTAMPTZ
+  ..
+  CHECK: pak_key_id and pak_key
+  both null or both non-null
+}
+
+entity "wallet_links" as wallet_links {
+  * **id** : UUID <<PK>>
+  --
+  * user_id : UUID <<FK>>
+  * chain : TEXT {solana, ethereum}
+  * address : TEXT
+  * verified : BOOLEAN
+  * linked_at : TIMESTAMPTZ
+  ..
+  UNIQUE(chain, address)
+}
+
+entity "wallet_challenges" as wallet_challenges {
+  * **id** : UUID <<PK>>
+  --
+  * user_id : UUID <<FK>>
+  * nonce : TEXT <<UNIQUE>>
+  * chain : TEXT
+  * address : TEXT
+  * expires_at : TIMESTAMPTZ
+  * used : BOOLEAN
+  * created_at : TIMESTAMPTZ
+}
+
+entity "login_attempts" as login_attempts {
+  * **id** : UUID <<PK>>
+  --
+  * access_code_hash : TEXT
+  ip_address : INET
+  * success : BOOLEAN
+  * attempted_at : TIMESTAMPTZ
+}
+
+entity "balance_transactions" as balance_tx {
+  * **id** : UUID <<PK>>
+  --
+  * user_id : UUID <<FK>>
+  * amount_usd : NUMERIC(10,2)
+  * type : TEXT {credit, debit}
+  * reason : TEXT
+  reference : TEXT
+  created_by : UUID <<FK>>
+  * created_at : TIMESTAMPTZ
+}
+
+entity "purchases" as purchases {
+  * **id** : UUID <<PK>>
+  --
+  * customer_id : UUID <<FK>>
+  stripe_session_id : TEXT <<UNIQUE>>
+  * plan_id : TEXT
+  * gb_amount : NUMERIC(10,2)
+  * price_usd : NUMERIC(10,2)
+  * status : TEXT {pending, completed, failed, refunded}
+  * created_at : TIMESTAMPTZ
+}
+
+entity "webhook_events" as webhook_events {
+  * **id** : UUID <<PK>>
+  --
+  * stripe_event_id : TEXT <<UNIQUE>>
+  * event_type : TEXT
+  * processed_at : TIMESTAMPTZ
+}
+
+entity "audit_log" as audit_log {
+  * **id** : UUID <<PK>>
+  --
+  actor_id : UUID <<FK>>
+  * action : TEXT
+  target_type : TEXT
+  target_id : TEXT
+  metadata : JSONB
+  ip_address : INET
+  * created_at : TIMESTAMPTZ
+}
+
+' Relationships
+users ||--o| customers : "1:0..1"
+users ||--o{ wallet_links : "1:N"
+users ||--o{ wallet_challenges : "1:N"
+users ||--o{ balance_tx : "1:N"
+users ||--o{ audit_log : "actor"
+users ||--o{ balance_tx : "created_by"
+customers ||--o{ purchases : "1:N"
+
+@enduml
+
+
+' ============================================================
+' PURCHASE FLOW SEQUENCE
+' ============================================================
+
+@startuml ProxyHub_PurchaseFlow
+!theme plain
+skinparam backgroundColor #FAFAFA
+skinparam defaultFontName Inter
+skinparam defaultFontSize 11
+skinparam shadowing false
+
+title Balance Purchase Flow
+
+actor Customer as C
+participant "Dashboard\n/purchase" as UI
+participant "POST\n/api/balance/purchase" as API
+database "PostgreSQL" as DB
+participant "Proxies.sx\nSDK" as SDK
+
+C -> UI : Select plan
+UI -> API : { planId: "pro" }
+
+API -> DB : SELECT balance_usd\nFROM users
+DB --> API : $150.00
+
+alt Balance >= Plan Price
+  API -> DB : UPDATE users\nSET balance_usd -= 150
+  API -> DB : INSERT balance_transactions\n(debit, "Purchase: Pro")
+
+  alt Existing PAK key
+    API -> SDK : poolKeys.topUp(id,\n{ addTrafficGB: 25,\n  extendDays: 30 })
+    SDK --> API : updated key
+  else No PAK key
+    API -> SDK : poolKeys.create(\n{ label, trafficCapGB: 25,\n  expiresAt })
+    SDK --> API : new key
+    API -> DB : UPDATE customers\nSET pak_key_id, pak_key
+  end
+
+  API -> DB : INSERT purchases\n(completed)
+  API -> DB : INSERT audit_log
+  API --> UI : { success: true,\nbalance: 0.00 }
+  UI --> C : Purchase complete
+
+else Provider Error
+  API -> DB : Refund: UPDATE users\nbalance_usd += 150
+  API -> DB : INSERT balance_transactions\n(credit, "Refund")
+  API --> UI : { error: "Provider error\nbalance refunded" }
+
+else Insufficient Balance
+  API --> UI : { error: "Insufficient balance" }
+end
+
+@enduml
+
+
+' ============================================================
+' AUTH FLOW SEQUENCE
+' ============================================================
+
+@startuml ProxyHub_AuthFlow
+!theme plain
+skinparam backgroundColor #FAFAFA
+skinparam defaultFontName Inter
+skinparam defaultFontSize 11
+skinparam shadowing false
+
+title Authentication Flows
+
+== Access Code Login ==
+
+actor User as U
+participant "Login Page" as LP
+participant "NextAuth\nCredentials" as NA
+database "PostgreSQL" as DB
+
+U -> LP : Enter access code
+LP -> NA : signIn("access-code",\n{ accessCode })
+NA -> DB : Check rate limit\n(5 / 15 min)
+NA -> DB : SELECT user\nWHERE access_code = $1
+NA -> NA : timingSafeEqual()\ncompare codes
+NA -> DB : Record attempt\n(success/fail)
+NA --> LP : JWT session
+LP --> U : Redirect /dashboard
+
+== Wallet Login ==
+
+actor User2 as U2
+participant "Login Page" as LP2
+participant "MetaMask" as MM
+participant "GET\n/api/auth/wallet-challenge" as WC
+participant "NextAuth\nCredentials" as NA2
+database "PostgreSQL" as DB2
+
+U2 -> LP2 : Click "Wallet Login"
+LP2 -> MM : eth_requestAccounts
+MM --> LP2 : address
+LP2 -> WC : POST { address }
+WC -> WC : HMAC sign\n(nonce + address)
+WC --> LP2 : { nonce, hmac, message }
+LP2 -> MM : personal_sign(message)
+MM --> LP2 : signature
+LP2 -> NA2 : signIn("wallet",\n{ address, signature,\n  nonce, hmac })
+NA2 -> NA2 : Verify HMAC\n(fresh + authentic)
+NA2 -> NA2 : viem.verifyMessage()\n(ETH signature)
+NA2 -> DB2 : SELECT wallet_links\nWHERE address
+NA2 -> DB2 : SELECT user
+NA2 --> LP2 : JWT session
+LP2 --> U2 : Redirect /dashboard
+
+@enduml
+
+
+' ============================================================
+' PROXY URL GENERATION FLOW
+' ============================================================
+
+@startuml ProxyHub_ProxyFlow
+!theme plain
+skinparam backgroundColor #FAFAFA
+skinparam defaultFontName Inter
+skinparam defaultFontSize 11
+skinparam shadowing false
+
+title Proxy URL Generation & Usage
+
+actor Customer as C
+participant "Keys Page\n/dashboard/keys" as KP
+participant "GET\n/api/pool/stock" as STOCK
+participant "GET\n/api/pool/keys" as KEYS
+participant "Proxies.sx\nGateway" as GW
+
+== Load Page ==
+
+C -> KP : Navigate to /dashboard/keys
+KP -> KEYS : Fetch PAK data
+KEYS --> KP : { key: { id, key: "pak_...",\ntrafficUsedMB, ... },\nproxyUsername: "psx_..." }
+
+KP -> STOCK : Fetch live pool status
+STOCK --> KP : { pools: { mbl: { us: 42, de: 18, ... },\npeer: { us: 120, ... } } }
+
+KP -> KP : Render country grid\nwith modem counts
+
+== Generate URLs (Client-Side) ==
+
+C -> KP : Select country=us,\npool=mbl, rot=sticky,\ncount=5
+KP -> KP : Build 5 URLs locally:\nhttp://psx_xxx-mbl-us\n-sid-{random}\n-rot-sticky\n:pak_xxx\n@gw.proxies.sx:7000
+KP --> C : Display URLs\n+ Copy buttons
+
+== Use Proxy ==
+
+C -> GW : curl -x {proxy_url}\nhttps://target.com
+GW -> GW : Authenticate PAK\nRoute to US mobile modem
+GW --> C : Response via\nmobile IP
+
+@enduml
