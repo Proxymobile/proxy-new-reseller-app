@@ -43,7 +43,7 @@ export default function CreateAccountPage() {
       <div>
         <h1 className="text-2xl font-bold text-[var(--color-text)] mb-6">Account Created</h1>
         <div className="max-w-md">
-          <div className="rounded-xl border border-[var(--color-accent)] bg-white p-6">
+          <div className="rounded-xl border border-[var(--color-accent)] bg-[var(--color-surface)] p-6">
             <p className="text-sm text-[var(--color-text-muted)] mb-1">Account</p>
             <p className="text-lg text-[var(--color-text)] font-medium mb-4">{result.label}</p>
 
@@ -94,7 +94,7 @@ export default function CreateAccountPage() {
     <div>
       <h1 className="text-2xl font-bold text-[var(--color-text)] mb-6">Create Account</h1>
       <div className="max-w-md">
-        <div className="rounded-xl border border-[var(--color-border)] bg-white p-6">
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label htmlFor="label" className="block text-sm font-medium text-[var(--color-text-muted)] mb-1.5">

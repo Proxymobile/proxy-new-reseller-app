@@ -48,7 +48,7 @@ export default async function AdminDashboard() {
         <StatCard label="Balances" value={`$${Number(stats?.total_balance ?? 0).toFixed(2)}`} />
       </div>
 
-      <div className="rounded-xl border border-[var(--color-border)] bg-white">
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)]">
         <div className="p-4 border-b border-[var(--color-border)]">
           <h2 className="text-lg font-semibold text-[var(--color-text)]">Recent Accounts</h2>
         </div>
@@ -108,7 +108,7 @@ export default async function AdminDashboard() {
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-[var(--color-border)] bg-white p-4">
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
       <p className="text-xs text-[var(--color-text-muted)] mb-1">{label}</p>
       <p className="text-2xl font-bold text-[var(--color-text)]">{value}</p>
     </div>

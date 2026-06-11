@@ -204,7 +204,7 @@ export default function UserDetailPage() {
       )}
 
       {actionResult?.code && (
-        <div className="rounded-xl border border-[var(--color-accent)] bg-white p-4 mb-4">
+        <div className="rounded-xl border border-[var(--color-accent)] bg-[var(--color-surface)] p-4 mb-4">
           <p className="text-sm text-[var(--color-text-muted)] mb-1">New access code:</p>
           <p className="text-lg font-mono font-bold text-[var(--color-accent)] tracking-wider select-all">{actionResult.code}</p>
           <p className="text-xs text-red-400 mt-1">Copy now — won&apos;t be shown again.</p>
@@ -216,7 +216,7 @@ export default function UserDetailPage() {
         {/* === Left Column: User Info + Actions === */}
         <div className="lg:col-span-1 space-y-4">
           {/* User Info Card */}
-          <div className="rounded-xl border border-[var(--color-border)] bg-white p-5">
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
             {editing ? (
               <div className="space-y-3">
                 <div>
@@ -273,7 +273,7 @@ export default function UserDetailPage() {
           </div>
 
           {/* Balance Card */}
-          <div className="rounded-xl border border-[var(--color-border)] bg-white p-5">
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
             <p className="text-xs text-[var(--color-text-muted)] mb-1">Balance</p>
             <p className="text-3xl font-bold text-[var(--color-text)] mb-4">${balance.toFixed(2)}</p>
             <div className="flex gap-2">
@@ -293,7 +293,7 @@ export default function UserDetailPage() {
           </div>
 
           {/* Actions Card */}
-          <div className="rounded-xl border border-[var(--color-border)] bg-white p-5 space-y-2">
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 space-y-2">
             <p className="text-xs text-[var(--color-text-muted)] mb-2">Actions</p>
             <button
               onClick={() => handleAction('toggle_enabled')}
@@ -319,7 +319,7 @@ export default function UserDetailPage() {
 
           {/* Wallets */}
           {wallets.length > 0 && (
-            <div className="rounded-xl border border-[var(--color-border)] bg-white p-5">
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
               <p className="text-xs text-[var(--color-text-muted)] mb-3">Linked Wallets</p>
               <div className="space-y-2">
                 {wallets.map((w) => (
@@ -337,7 +337,7 @@ export default function UserDetailPage() {
 
           {/* Proxy Key */}
           {user.pak_key_id && (
-            <div className="rounded-xl border border-[var(--color-border)] bg-white p-5">
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
               <p className="text-xs text-[var(--color-text-muted)] mb-3">Proxy Key</p>
               <InfoRow label="Key ID" value={user.pak_key_id} mono />
               <InfoRow label="Plan" value={user.plan_id || '—'} />
@@ -356,7 +356,7 @@ export default function UserDetailPage() {
         {/* === Right Column: History === */}
         <div className="lg:col-span-2 space-y-4">
           {/* Balance Transactions */}
-          <div className="rounded-xl border border-[var(--color-border)] bg-white overflow-hidden">
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden">
             <div className="px-5 py-3 border-b border-[var(--color-border)]">
               <h2 className="text-sm font-semibold text-[var(--color-text)]">Balance History</h2>
             </div>
@@ -411,7 +411,7 @@ export default function UserDetailPage() {
           </div>
 
           {/* Purchases */}
-          <div className="rounded-xl border border-[var(--color-border)] bg-white overflow-hidden">
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden">
             <div className="px-5 py-3 border-b border-[var(--color-border)]">
               <h2 className="text-sm font-semibold text-[var(--color-text)]">Purchase History</h2>
             </div>
@@ -462,7 +462,7 @@ export default function UserDetailPage() {
       {/* Balance Modal */}
       {balanceModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="rounded-xl border border-[var(--color-border)] bg-white p-6 w-full max-w-sm">
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6 w-full max-w-sm">
             <h3 className="text-sm font-medium text-[var(--color-text)] mb-4">
               {balanceModal === 'credit' ? 'Add Credit' : 'Debit Balance'} — {user.label}
             </h3>

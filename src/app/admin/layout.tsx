@@ -13,7 +13,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className="min-h-screen flex">
-      <aside className="w-56 border-r border-[var(--color-border)] bg-white flex flex-col">
+      <aside className="w-56 border-r border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col">
         <div className="p-4 border-b border-[var(--color-border)]">
           <Link href="/admin" className="text-lg font-bold text-[var(--color-text)]">
             {config.brand.name}
