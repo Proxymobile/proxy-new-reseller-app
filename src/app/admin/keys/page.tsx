@@ -1,4 +1,5 @@
 import { query, queryOne } from '@/lib/db';
+import CreateKeyPanel from './CreateKeyPanel';
 
 interface KeyRow {
   customer_id: string;
@@ -68,6 +69,9 @@ export default async function AdminKeysPage() {
   return (
     <div>
       <h1 className="text-2xl font-bold text-[var(--color-text)] mb-6">All Proxy Keys</h1>
+
+      {/* Create a key for the admin's own use */}
+      <CreateKeyPanel />
 
       {/* Key Stats */}
       <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6 mb-6">
