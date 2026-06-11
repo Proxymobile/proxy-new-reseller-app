@@ -30,6 +30,11 @@
 
 html {
   color-scheme: light;
+  /* Prevent decorative absolute glows (e.g. hero/pricing background blobs that
+     extend past the viewport) from creating horizontal scroll on narrow desktop
+     windows and iOS Safari. `clip` is used instead of `hidden` so it does not
+     create a scroll container that would break the sticky header. */
+  overflow-x: clip;
 }
 .dark html, html.dark {
   color-scheme: dark;
@@ -42,6 +47,7 @@ body {
   font-feature-settings: 'cv11', 'ss01', 'ss03';
   -webkit-font-smoothing: antialiased;
   transition: background-color 200ms ease, color 200ms ease;
+  overflow-x: clip;
 }
 
 /* ─── Background atmosphere ─── */
