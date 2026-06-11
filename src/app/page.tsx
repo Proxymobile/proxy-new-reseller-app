@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import type { PointerEvent as ReactPointerEvent, KeyboardEvent as ReactKeyboardEvent } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { motion, AnimatePresence, useInView } from 'framer-motion';
+import { motion, AnimatePresence, useInView, useReducedMotion } from 'framer-motion';
 import { config } from '@/config';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
@@ -88,6 +89,64 @@ const GB_TIERS = [
   { gb: 50, price: 275, perGb: 5.5, discount: 31 },
   { gb: 100, price: 500, perGb: 5.0, discount: 38 },
 ];
+
+// ─── Pricing config + math ──────────────────────────────────
+// Easy-to-edit social proof line (rendered near the CTA).
+const SOCIAL_PROOF = {
+  users: '1,200+ active users',
+  uptime: '99.9% uptime',
+  rating: '4.8/5 rating',
+};
+
+const BASE_RATE = 8; // $/GB used to compute "you save"
+const POPULAR_GB = 10; // default slider position + "Most Popular" marker
+const MIN_GB = 1;
+const MAX_GB = 100;
+const SEGS = GB_TIERS.length - 1;
+
+// Per-GB rate is interpolated linearly between tier breakpoints. Because each
+// breakpoint's rate is lower than the previous, the result is monotonic
+// non-increasing — a higher GB amount can never be priced at a worse $/GB.
+function ratePerGb(gb: number): number {
+  const g = Math.min(MAX_GB, Math.max(MIN_GB, gb));
+  for (let i = 0; i < SEGS; i++) {
+    const a = GB_TIERS[i];
+    const b = GB_TIERS[i + 1];
+    if (g >= a.gb && g <= b.gb) {
+      const t = (g - a.gb) / (b.gb - a.gb);
+      return a.perGb + (b.perGb - a.perGb) * t;
+    }
+  }
+  return GB_TIERS[SEGS].perGb;
+}
+function totalFor(gb: number): number {
+  return Math.round(gb * ratePerGb(gb) * 100) / 100;
+}
+function discountPct(gb: number): number {
+  return Math.round((1 - ratePerGb(gb) / BASE_RATE) * 100);
+}
+// Position uses equal-width segments between breakpoints so the tick labels are
+// evenly spaced along the track (not bunched at the low end).
+function gbToPct(gb: number): number {
+  for (let i = 0; i < SEGS; i++) {
+    const a = GB_TIERS[i].gb;
+    const b = GB_TIERS[i + 1].gb;
+    if (gb >= a && gb <= b) return ((i + (gb - a) / (b - a)) / SEGS) * 100;
+  }
+  return 100;
+}
+function pctToGb(pct: number): number {
+  const p = Math.min(100, Math.max(0, pct));
+  const seg = (p / 100) * SEGS;
+  const i = Math.min(SEGS - 1, Math.floor(seg));
+  const frac = seg - i;
+  const a = GB_TIERS[i].gb;
+  const b = GB_TIERS[i + 1].gb;
+  return Math.round(a + frac * (b - a));
+}
+function money(v: number): string {
+  return Number.isInteger(v) ? `$${v}` : `$${v.toFixed(2)}`;
+}
 
 // ─── Logo ───────────────────────────────────────────────────
 
@@ -875,12 +934,146 @@ function StatCards() {
 
 // ─── Interactive Pricing ────────────────────────────────────
 
+function PaymentIcons() {
+  return (
+    <>
+      <svg viewBox="0 0 48 30" className="h-6 w-auto" role="img" aria-label="Visa">
+        <rect width="48" height="30" rx="5" fill="#1434CB" />
+        <text x="24" y="20" fontFamily="Arial, sans-serif" fontSize="13" fontStyle="italic" fontWeight="700" fill="#fff" textAnchor="middle">VISA</text>
+      </svg>
+      <svg viewBox="0 0 48 30" className="h-6 w-auto" role="img" aria-label="Mastercard">
+        <rect width="48" height="30" rx="5" fill="#16161a" />
+        <circle cx="20" cy="15" r="8" fill="#EB001B" />
+        <circle cx="28" cy="15" r="8" fill="#F79E1B" fillOpacity="0.9" />
+      </svg>
+      <svg viewBox="0 0 30 30" className="h-6 w-6" role="img" aria-label="Bitcoin">
+        <circle cx="15" cy="15" r="15" fill="#F7931A" />
+        <text x="15" y="21" fontFamily="Arial, sans-serif" fontSize="16" fontWeight="700" fill="#fff" textAnchor="middle">₿</text>
+      </svg>
+      <svg viewBox="0 0 30 30" className="h-6 w-6" role="img" aria-label="Tether USDT">
+        <circle cx="15" cy="15" r="15" fill="#26A17B" />
+        <text x="15" y="20" fontFamily="Arial, sans-serif" fontSize="11" fontWeight="800" fill="#fff" textAnchor="middle">₮</text>
+      </svg>
+      <svg viewBox="0 0 30 30" className="h-6 w-6" role="img" aria-label="Ethereum">
+        <circle cx="15" cy="15" r="15" fill="#627EEA" />
+        <path d="M15 5l-6 10 6 3.5L21 15z" fill="#fff" fillOpacity="0.9" />
+        <path d="M15 19.5L9 16l6 8 6-8z" fill="#fff" fillOpacity="0.6" />
+      </svg>
+    </>
+  );
+}
+
 function InteractivePricing() {
   const [country, setCountry] = useState('us');
-  const [gb, setGb] = useState(25);
+  const [gb, setGb] = useState(POPULAR_GB);
+  const [dragging, setDragging] = useState(false);
+  const [displayTotal, setDisplayTotal] = useState(totalFor(POPULAR_GB));
+  const [showBar, setShowBar] = useState(false);
 
-  const tier = GB_TIERS.find((t) => t.gb === gb)!;
+  const trackRef = useRef<HTMLDivElement>(null);
+  const sliderRef = useRef<HTMLDivElement>(null);
+  const orderRef = useRef<HTMLDivElement>(null);
+  const displayRef = useRef(totalFor(POPULAR_GB));
+  const reduceMotion = useReducedMotion();
+
   const ctry = PRICING_COUNTRIES.find((c) => c.code === country)!;
+  const rate = ratePerGb(gb);
+  const total = totalFor(gb);
+  const disc = discountPct(gb);
+  const pct = gbToPct(gb);
+  const saved = Math.round((gb * BASE_RATE - total) * 100) / 100;
+
+  const setDisp = (v: number) => {
+    displayRef.current = v;
+    setDisplayTotal(v);
+  };
+
+  // Count-up animation on the total (skipped when reduced motion is preferred).
+  useEffect(() => {
+    if (reduceMotion) {
+      setDisp(total);
+      return;
+    }
+    const from = displayRef.current;
+    if (from === total) return;
+    let raf = 0;
+    const start = performance.now();
+    const dur = 420;
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / dur);
+      const e = 1 - Math.pow(1 - t, 3); // easeOutCubic
+      setDisp(from + (total - from) * e);
+      if (t < 1) raf = requestAnimationFrame(step);
+      else setDisp(total);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total, reduceMotion]);
+
+  // Sticky mini-bar: appears once the order card scrolls out of view.
+  useEffect(() => {
+    const el = orderRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(
+      ([entry]) => setShowBar(!entry.isIntersecting),
+      { rootMargin: '-80% 0px 0px 0px' },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  const setFromClientX = (clientX: number) => {
+    const el = trackRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const next = pctToGb(((clientX - r.left) / r.width) * 100);
+    setGb(Math.min(MAX_GB, Math.max(MIN_GB, next)));
+  };
+  const onPointerDown = (e: ReactPointerEvent) => {
+    setDragging(true);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setFromClientX(e.clientX);
+    sliderRef.current?.focus();
+  };
+  const onPointerMove = (e: ReactPointerEvent) => {
+    if (dragging) setFromClientX(e.clientX);
+  };
+  const onPointerUp = (e: ReactPointerEvent) => {
+    setDragging(false);
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch {}
+  };
+  const onKeyDown = (e: ReactKeyboardEvent) => {
+    let g = gb;
+    switch (e.key) {
+      case 'ArrowRight': case 'ArrowUp': g += 1; break;
+      case 'ArrowLeft': case 'ArrowDown': g -= 1; break;
+      case 'PageUp': g += 5; break;
+      case 'PageDown': g -= 5; break;
+      case 'Home': g = MIN_GB; break;
+      case 'End': g = MAX_GB; break;
+      default: return;
+    }
+    e.preventDefault();
+    setGb(Math.min(MAX_GB, Math.max(MIN_GB, g)));
+  };
+
+  const baseFeatures = [
+    `${gb} GB premium bandwidth`,
+    'HTTP & SOCKS5 protocols',
+    'Unlimited parallel sessions',
+    `${ctry.name} mobile + residential IPs`,
+    'On-demand IP rotation',
+    'Unused data never expires',
+  ];
+  const extraFeatures: string[] = [];
+  if (gb >= 25) extraFeatures.push('Priority support');
+  if (gb >= 50) extraFeatures.push('Dedicated account manager', 'API access');
+
+  const shownTotal = Number.isInteger(total)
+    ? Math.round(displayTotal)
+    : Math.round(displayTotal * 100) / 100;
+  const ctaText = `Get ${gb} GB in ${ctry.name} — ${money(total)}`;
 
   return (
     <section id="pricing" className="relative z-10 px-6 py-16 lg:py-24 border-t border-[var(--color-border)] scroll-mt-20">
@@ -948,37 +1141,97 @@ function InteractivePricing() {
           transition={{ duration: 0.5, delay: 0.3 }}
           className="mb-10"
         >
-          <p className="text-center text-[10px] uppercase tracking-[0.18em] text-[var(--color-text-muted)] mb-4">
-            Select Bandwidth
-          </p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-            {GB_TIERS.map((t) => {
-              const selected = gb === t.gb;
-              return (
-                <button
-                  key={t.gb}
-                  onClick={() => setGb(t.gb)}
-                  className={`relative rounded-2xl border p-4 text-left transition-all ${
-                    selected
-                      ? 'border-[var(--color-primary)]/40 bg-[var(--color-primary)]/8 ring-1 ring-[var(--color-primary)]/30 shadow-premium'
-                      : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-bg)] hover:border-[var(--color-primary)]/30'
+          <div className="flex items-end justify-between mb-1 px-1">
+            <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-text-muted)]">
+              Select Bandwidth
+            </p>
+            <p className="text-xs font-semibold text-[var(--color-text-muted)]">
+              {money(rate)} / GB
+              {disc > 0 && <span className="text-[var(--color-accent)]"> · save {disc}%</span>}
+            </p>
+          </div>
+          <div className="flex items-baseline gap-1.5 px-1 mb-2">
+            <span className="text-3xl font-bold tracking-tight text-[var(--color-text)]">{gb}</span>
+            <span className="text-base font-semibold text-[var(--color-text-muted)]">GB</span>
+          </div>
+
+          <div className="relative pt-8 pb-1 px-1 select-none" style={{ touchAction: 'none' }}>
+            {/* Most Popular marker */}
+            <div
+              className="absolute top-0 -translate-x-1/2 z-10"
+              style={{ left: `${gbToPct(POPULAR_GB)}%` }}
+            >
+              <span className="relative block rounded-full bg-[var(--color-primary)] px-2 py-0.5 text-[10px] font-bold tracking-wide text-white whitespace-nowrap shadow-[0_4px_10px_rgba(79,70,229,0.3)]">
+                ★ Most Popular
+                <span className="absolute left-1/2 -bottom-1 h-2 w-2 -translate-x-1/2 rotate-45 bg-[var(--color-primary)]" />
+              </span>
+            </div>
+
+            <div
+              ref={sliderRef}
+              role="slider"
+              tabIndex={0}
+              aria-label="Bandwidth in gigabytes"
+              aria-valuemin={MIN_GB}
+              aria-valuemax={MAX_GB}
+              aria-valuenow={gb}
+              aria-valuetext={`${gb} gigabytes, ${money(total)} total`}
+              onKeyDown={onKeyDown}
+              className="outline-none rounded-full focus-visible:ring-4 focus-visible:ring-[var(--color-primary)]/30"
+            >
+              <div
+                ref={trackRef}
+                onPointerDown={onPointerDown}
+                onPointerMove={onPointerMove}
+                onPointerUp={onPointerUp}
+                className="relative h-2 rounded-full bg-[var(--color-border)] cursor-pointer"
+              >
+                <div
+                  className="absolute h-full rounded-full left-0 bg-gradient-to-r from-[var(--color-primary-soft)] to-[var(--color-primary)]"
+                  style={{ width: `${pct}%` }}
+                />
+                <div
+                  className={`absolute top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--color-surface)] border-[3px] border-[var(--color-primary)] shadow-[0_2px_8px_rgba(79,70,229,0.35)] ${
+                    dragging ? 'ring-8 ring-[var(--color-primary)]/12 cursor-grabbing' : 'cursor-grab'
                   }`}
+                  style={{ left: `${pct}%`, transition: dragging || reduceMotion ? 'none' : 'left 120ms ease-out' }}
                 >
-                  {t.discount && (
-                    <span className="absolute -top-1.5 right-1.5 rounded-full bg-[var(--color-primary)] px-1.5 py-0.5 text-[9px] font-bold uppercase text-white shadow-md">
-                      -{t.discount}%
+                  {/* 44px+ touch target */}
+                  <span className="absolute -inset-3" />
+                </div>
+              </div>
+            </div>
+
+            {/* Ticks + discount badges */}
+            <div className="relative h-10 mt-2">
+              {GB_TIERS.map((t) => {
+                const active = gb === t.gb;
+                return (
+                  <button
+                    key={t.gb}
+                    onClick={() => setGb(t.gb)}
+                    className="absolute -translate-x-1/2 text-center group"
+                    style={{ left: `${gbToPct(t.gb)}%` }}
+                    aria-label={`Set ${t.gb} gigabytes`}
+                  >
+                    <span className={`mx-auto mb-1 block h-1.5 w-0.5 rounded ${active ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]'}`} />
+                    <span className={`block text-[11px] font-bold leading-none ${active ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-muted)] group-hover:text-[var(--color-text)]'}`}>
+                      {t.gb}GB
                     </span>
-                  )}
-                  <div className="text-base font-bold text-[var(--color-text)]">{t.gb} GB</div>
-                  <div className="text-xl font-bold text-[var(--color-text)] mt-1">${t.price}</div>
-                  <div className="text-[10px] text-[var(--color-text-muted)] mt-0.5">${t.perGb.toFixed(2)}/GB</div>
-                </button>
-              );
-            })}
+                    {t.discount && (
+                      <span className="mt-0.5 block text-[10px] font-bold text-[var(--color-accent)]">
+                        -{t.discount}%
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </motion.div>
 
         <motion.div
+          ref={orderRef}
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-30px' }}
@@ -988,52 +1241,71 @@ function InteractivePricing() {
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 pb-6 border-b border-[var(--color-border)]">
             <div>
               <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-text-muted)] mb-2">Your order</p>
-              <AnimatePresence mode="wait">
-                <motion.p
-                  key={`${gb}-${country}`}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -6 }}
-                  transition={{ duration: 0.2 }}
-                  className="text-lg font-semibold text-[var(--color-text)] flex items-center gap-2"
+              <p className="text-lg font-semibold text-[var(--color-text)] flex items-center gap-2">
+                {gb} GB <span className="text-[var(--color-text-muted)] mx-1">·</span>
+                <motion.span
+                  key={ctry.code}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.25 }}
+                  className="text-2xl leading-none"
                 >
-                  {gb} GB <span className="text-[var(--color-text-muted)] mx-1">·</span>
-                  <span className="text-2xl leading-none">{ctry.flag}</span>
-                  {ctry.name}
-                </motion.p>
-              </AnimatePresence>
+                  {ctry.flag}
+                </motion.span>
+                {ctry.name}
+              </p>
             </div>
             <div className="text-right">
-              <AnimatePresence mode="wait">
-                <motion.p
-                  key={tier.price}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ duration: 0.25 }}
-                  className="text-4xl sm:text-5xl font-bold text-[var(--color-text)] tracking-tight"
-                >
-                  ${tier.price}.<span className="text-3xl text-[var(--color-text-muted)]">00</span>
-                </motion.p>
-              </AnimatePresence>
-              <p className="text-xs text-[var(--color-text-muted)] mt-1">${tier.perGb.toFixed(2)} per GB</p>
+              <p className="text-4xl sm:text-5xl font-bold text-[var(--color-text)] tracking-tight tabular-nums">
+                {money(shownTotal)}
+              </p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">{money(rate)} per GB</p>
+              <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[var(--color-accent)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--color-accent)]">
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <circle cx="12" cy="12" r="9" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 2" />
+                </svg>
+                Unused data never expires
+              </span>
+              <div className="h-5 mt-2">
+                <AnimatePresence>
+                  {gb > 1 && (
+                    <motion.p
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      className="text-sm font-bold text-[var(--color-accent)]"
+                    >
+                      You save {money(saved)} vs base rate
+                    </motion.p>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
           </div>
 
           <div className="mt-6 grid sm:grid-cols-2 gap-x-6 gap-y-3">
-            {[
-              `${gb} GB of bandwidth`,
-              `${ctry.name} mobile + residential IPs`,
-              'HTTP & SOCKS5 protocols',
-              'On-demand IP rotation',
-              'Unlimited parallel sessions',
-              'No expiry — use at your pace',
-            ].map((f) => (
+            {baseFeatures.map((f) => (
               <div key={f} className="flex items-center gap-2 text-sm text-[var(--color-text)]">
                 <Check className="h-3.5 w-3.5 text-[var(--color-accent)]" />
                 {f}
               </div>
             ))}
+            <AnimatePresence>
+              {extraFeatures.map((f) => (
+                <motion.div
+                  key={f}
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.25 }}
+                  className="flex items-center gap-2 text-sm text-[var(--color-text)]"
+                >
+                  <Check className="h-3.5 w-3.5 text-[var(--color-primary)]" />
+                  {f}
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </div>
 
           <Link
@@ -1041,16 +1313,59 @@ function InteractivePricing() {
             className="mt-7 group relative flex items-center justify-center gap-2 rounded-2xl bg-[var(--color-text)] py-3.5 text-sm font-semibold text-[var(--color-bg)] hover:opacity-90 transition shadow-lg shadow-[var(--color-primary)]/20 overflow-hidden"
           >
             <span className="relative z-10 flex items-center gap-2">
-              Buy Now — ${tier.price}.00 <Arrow />
+              {ctaText} <Arrow />
             </span>
             <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
           </Link>
 
-          <p className="mt-3 text-center text-[11px] text-[var(--color-text-muted)]">
+          {/* Social proof */}
+          <p className="mt-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs font-medium text-[var(--color-text-muted)]">
+            <span>{SOCIAL_PROOF.users}</span>
+            <span className="text-[var(--color-border)]" aria-hidden>·</span>
+            <span>{SOCIAL_PROOF.uptime}</span>
+            <span className="text-[var(--color-border)]" aria-hidden>·</span>
+            <span className="inline-flex items-center gap-1"><span className="text-amber-400" aria-hidden>★</span>{SOCIAL_PROOF.rating}</span>
+          </p>
+
+          {/* Payment methods */}
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5 border-t border-[var(--color-border)] pt-4">
+            <PaymentIcons />
+          </div>
+
+          <p className="mt-4 text-center text-[11px] text-[var(--color-text-muted)]">
             7-day money-back guarantee · No hidden fees · Cancel anytime
           </p>
         </motion.div>
       </div>
+
+      {/* Sticky mini-bar */}
+      <AnimatePresence>
+        {showBar && (
+          <motion.div
+            initial={{ y: '110%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '110%' }}
+            transition={{ duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }}
+            className="fixed inset-x-0 bottom-0 z-[55] border-t border-[var(--color-border)] bg-[var(--color-surface)]/90 backdrop-blur-md shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.18)]"
+          >
+            <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
+              <span className="text-xl leading-none">{ctry.flag}</span>
+              <span className="min-w-0 truncate text-[13px] font-medium text-[var(--color-text-muted)]">
+                <span className="font-semibold text-[var(--color-text)]">{gb} GB</span> · {ctry.name}
+              </span>
+              <span className="ml-auto whitespace-nowrap text-xl font-bold tracking-tight text-[var(--color-text)] tabular-nums">
+                {money(total)}
+              </span>
+              <Link
+                href="/login"
+                className="shrink-0 rounded-xl bg-[var(--color-primary)] px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+              >
+                Buy now
+              </Link>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   );
 }
