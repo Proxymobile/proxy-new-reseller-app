@@ -80,7 +80,7 @@ export default async function AdminKeysPage() {
       </div>
 
       {/* Keys Table */}
-      <div className="rounded-xl border border-[var(--color-border)] bg-white overflow-hidden">
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -165,7 +165,7 @@ export default async function AdminKeysPage() {
 
 function StatCard({ label, value, accent }: { label: string; value: string; accent?: 'green' | 'red' }) {
   return (
-    <div className="rounded-xl border border-[var(--color-border)] bg-white p-4">
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
       <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-1">{label}</p>
       <p className="text-lg font-semibold" style={{
         color: accent === 'green' ? '#059669' : accent === 'red' ? '#dc2626' : 'var(--color-text)',

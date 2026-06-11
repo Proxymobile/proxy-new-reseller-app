@@ -99,12 +99,12 @@ export default function AccountsPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by label or email..."
-          className="w-full max-w-sm rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]/40 focus:outline-none focus:border-[var(--color-primary)]"
+          className="w-full max-w-sm rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]/40 focus:outline-none focus:border-[var(--color-primary)]"
         />
       </div>
 
       {actionResult?.code && (
-        <div className="rounded-xl border border-[var(--color-accent)] bg-white p-4 mb-6">
+        <div className="rounded-xl border border-[var(--color-accent)] bg-[var(--color-surface)] p-4 mb-6">
           <p className="text-sm text-[var(--color-text-muted)] mb-1">New access code generated:</p>
           <p className="text-lg font-mono font-bold text-[var(--color-accent)] tracking-wider select-all">
             {actionResult.code}
@@ -122,7 +122,7 @@ export default function AccountsPage() {
       {/* Balance Modal */}
       {balanceModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="rounded-xl border border-[var(--color-border)] bg-white p-6 w-full max-w-sm">
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6 w-full max-w-sm">
             <h3 className="text-sm font-medium text-[var(--color-text)] mb-4">
               Add Balance — {balanceModal.label}
             </h3>
@@ -171,7 +171,7 @@ export default function AccountsPage() {
         </div>
       )}
 
-      <div className="rounded-xl border border-[var(--color-border)] bg-white overflow-hidden">
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

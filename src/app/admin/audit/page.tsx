@@ -25,7 +25,7 @@ export default async function AuditPage() {
     <div>
       <h1 className="text-2xl font-bold text-[var(--color-text)] mb-6">Audit Log</h1>
 
-      <div className="rounded-xl border border-[var(--color-border)] bg-white overflow-hidden">
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

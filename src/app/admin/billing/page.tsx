@@ -79,7 +79,7 @@ export default function AdminBillingPage() {
         <select
           value={filterMethod}
           onChange={(e) => { setFilterMethod(e.target.value); setLoading(true); }}
-          className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-xs text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
+          className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
         >
           <option value="">All Methods</option>
           <option value="stripe">Stripe</option>
@@ -91,7 +91,7 @@ export default function AdminBillingPage() {
         <select
           value={filterType}
           onChange={(e) => { setFilterType(e.target.value); setLoading(true); }}
-          className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 text-xs text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
+          className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
         >
           <option value="">All Types</option>
           <option value="credit">Deposits (Credit)</option>
@@ -100,7 +100,7 @@ export default function AdminBillingPage() {
       </div>
 
       {/* Transaction Table */}
-      <div className="rounded-xl border border-[var(--color-border)] bg-white overflow-hidden">
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -173,7 +173,7 @@ export default function AdminBillingPage() {
 
 function StatCard({ label, value, accent }: { label: string; value: string; accent?: 'green' | 'red' }) {
   return (
-    <div className="rounded-xl border border-[var(--color-border)] bg-white p-4">
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
       <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-1">{label}</p>
       <p className="text-lg font-semibold" style={{
         color: accent === 'green' ? '#059669' : accent === 'red' ? '#dc2626' : 'var(--color-text)',
