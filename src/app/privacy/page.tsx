@@ -1,5 +1,13 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { config } from '@/config';
+import { absoluteUrl } from '@/lib/seo';
+
+export const metadata: Metadata = {
+  title: 'Privacy Policy',
+  description: `Privacy Policy for ${config.brand.name}. We track bandwidth for billing only and never log the content of your proxy traffic.`,
+  alternates: { canonical: absoluteUrl('/privacy') },
+};
 
 export default function PrivacyPage() {
   return (

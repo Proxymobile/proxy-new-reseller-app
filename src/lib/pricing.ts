@@ -31,3 +31,16 @@ export function customGbRatePerGB(gb: number): number {
 export const CUSTOM_DURATION_DAYS = 30;
 export const CUSTOM_MIN_GB = 1;
 export const CUSTOM_MAX_GB = 100;
+
+/**
+ * Public pricing tiers shown on marketing pages (homepage slider + country
+ * pages). Kept in sync with the slider anchors in customGbPrice().
+ */
+export const GB_TIERS = [
+  { gb: 1, price: 8, perGb: 8.0, discount: 0 },
+  { gb: 5, price: 35, perGb: 7.0, discount: 13 },
+  { gb: 10, price: 65, perGb: 6.5, discount: 19 },
+  { gb: 25, price: 150, perGb: 6.0, discount: 25 },
+  { gb: 50, price: 275, perGb: 5.5, discount: 31 },
+  { gb: 100, price: 500, perGb: 5.0, discount: 38 },
+] as const;

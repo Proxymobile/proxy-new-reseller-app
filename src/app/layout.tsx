@@ -1,13 +1,34 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { config } from '@/config';
+import { SITE_URL, SITE_NAME } from '@/lib/seo';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: config.brand.name,
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: `${SITE_NAME} — Mobile Proxies on Real 4G/5G Carrier IPs`,
+    template: `%s | ${SITE_NAME}`,
+  },
   description: config.brand.tagline,
+  applicationName: SITE_NAME,
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, 'max-image-preview': 'large', 'max-snippet': -1 },
+  },
+  openGraph: {
+    type: 'website',
+    siteName: SITE_NAME,
+    locale: 'en_US',
+    url: SITE_URL,
+  },
+  twitter: {
+    card: 'summary_large_image',
+    site: '@proxymobile',
+  },
   icons: {
     icon: [
       { url: '/icon-light.svg', media: '(prefers-color-scheme: light)', type: 'image/svg+xml' },
