@@ -1,5 +1,13 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { config } from '@/config';
+import { absoluteUrl } from '@/lib/seo';
+
+export const metadata: Metadata = {
+  title: 'Terms of Service',
+  description: `Terms of Service for ${config.brand.name} mobile proxy services.`,
+  alternates: { canonical: absoluteUrl('/terms') },
+};
 
 export default function TermsPage() {
   return (
