@@ -221,7 +221,7 @@ export default async function DashboardPage() {
             <p className="text-sm text-[var(--color-text-muted)] mt-1">
               {hasActiveKey
                 ? 'Top up your account with another plan — keys stack and extend automatically.'
-                : 'Pick a country, choose a plan, get your access key in seconds.'}
+                : 'Choose your bandwidth and pool — all countries included. Get your access key in seconds.'}
             </p>
           </div>
         </div>
