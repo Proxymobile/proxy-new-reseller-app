@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { motion, AnimatePresence, useInView, useReducedMotion } from 'framer-motion';
 import { config } from '@/config';
+import { customGbPrice, customGbRatePerGB, GB_TIERS } from '@/lib/pricing';
 import { COUNTRIES } from '@/lib/countries';
 import { HOME_FAQS } from '@/lib/home-faqs';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -58,16 +59,9 @@ const PRICING_COUNTRIES = [
   { code: 'am', name: 'Armenia', flag: '\u{1F1E6}\u{1F1F2}' },
 ];
 
-const GB_TIERS = [
-  { gb: 1, price: 8, perGb: 8.0 },
-  { gb: 5, price: 35, perGb: 7.0, discount: 13 },
-  { gb: 10, price: 65, perGb: 6.5, discount: 19 },
-  { gb: 25, price: 150, perGb: 6.0, discount: 25 },
-  { gb: 50, price: 275, perGb: 5.5, discount: 31 },
-  { gb: 100, price: 500, perGb: 5.0, discount: 38 },
-];
-
 // ─── Pricing config + math ──────────────────────────────────
+// Pricing comes straight from src/lib/pricing.ts (the same curve the server
+// charges) so the advertised price ALWAYS equals what checkout charges.
 // Easy-to-edit social proof line (rendered near the CTA).
 const SOCIAL_PROOF = {
   users: '1,200+ active users',
@@ -75,29 +69,17 @@ const SOCIAL_PROOF = {
   rating: '4.8/5 rating',
 };
 
-const BASE_RATE = 8; // $/GB used to compute "you save"
+const BASE_RATE = 7; // entry $/GB rate (1–5 GB) — used to compute "you save"
 const POPULAR_GB = 10; // default slider position + "Most Popular" marker
 const MIN_GB = 1;
 const MAX_GB = 100;
 const SEGS = GB_TIERS.length - 1;
 
-// Per-GB rate is interpolated linearly between tier breakpoints. Because each
-// breakpoint's rate is lower than the previous, the result is monotonic
-// non-increasing — a higher GB amount can never be priced at a worse $/GB.
 function ratePerGb(gb: number): number {
-  const g = Math.min(MAX_GB, Math.max(MIN_GB, gb));
-  for (let i = 0; i < SEGS; i++) {
-    const a = GB_TIERS[i];
-    const b = GB_TIERS[i + 1];
-    if (g >= a.gb && g <= b.gb) {
-      const t = (g - a.gb) / (b.gb - a.gb);
-      return a.perGb + (b.perGb - a.perGb) * t;
-    }
-  }
-  return GB_TIERS[SEGS].perGb;
+  return customGbRatePerGB(Math.min(MAX_GB, Math.max(MIN_GB, gb)));
 }
 function totalFor(gb: number): number {
-  return Math.round(gb * ratePerGb(gb) * 100) / 100;
+  return customGbPrice(Math.min(MAX_GB, Math.max(MIN_GB, gb)));
 }
 function discountPct(gb: number): number {
   return Math.round((1 - ratePerGb(gb) / BASE_RATE) * 100);
@@ -633,7 +615,7 @@ function RotationDemo() {
   const [tick, setTick] = useState(0);
   const modes = ['Sticky', 'Auto-rotate', 'Hard rotate'];
   const tokens = ['rot-sticky', 'rot-auto10', 'rot-hard'];
-  const descs = ['Same IP for your entire session', 'Fresh IP every 10 minutes', 'New IP on every request'];
+  const descs = ['Holds one device for your session', 'Fresh IP every 10 minutes', 'Strict pin — holds one device'];
   const palette = ['#10b981', '#6366f1', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
   useEffect(() => {
@@ -1044,7 +1026,7 @@ function InteractivePricing() {
     'Unlimited parallel sessions',
     `${ctry.name} mobile + residential IPs`,
     'On-demand IP rotation',
-    'Unused data never expires',
+    'Data valid 30 days — top-ups extend it',
   ];
   const extraFeatures: string[] = [];
   if (gb >= 25) extraFeatures.push('Priority support');
@@ -1072,7 +1054,7 @@ function InteractivePricing() {
             Mobile Proxy Pricing
           </motion.h2>
           <motion.p variants={fadeUp} custom={2} className="mt-4 text-sm sm:text-base text-[var(--color-text-muted)] max-w-md mx-auto">
-            Pay per GB — no subscriptions, no expiry. Use at your own pace.
+            Pay per GB — no subscriptions. Each purchase is valid for 30 days; top-ups extend it.
           </motion.p>
         </motion.div>
 
@@ -1245,7 +1227,7 @@ function InteractivePricing() {
                   <circle cx="12" cy="12" r="9" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 2" />
                 </svg>
-                Unused data never expires
+                Valid 30 days · top-ups extend
               </span>
               <div className="h-5 mt-2">
                 <AnimatePresence>
@@ -1866,12 +1848,12 @@ export default function LandingPage() {
                 Your rules
               </motion.p>
               <motion.h2 variants={fadeUp} custom={1} className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-[var(--color-text)] leading-[1.1]">
-                Keep one IP all day. Or rotate every request.
+                Hold one device all day. Or rotate on an interval.
               </motion.h2>
               <motion.p variants={fadeUp} custom={2} className="mt-4 text-sm text-[var(--color-text-muted)] leading-relaxed">
-                Five rotation modes, all set with a single URL token.
-                Sticky pins one IP to your session. Auto-rotate gives you a fresh IP every 10 or 30 minutes.
-                Hard rotate cycles on every connection.
+                Rotation modes, all set with a single URL token.
+                Sticky holds one device for your session (the IP stays as stable as the carrier allows).
+                Auto-rotate gives you a fresh IP on an interval. Hard is a strict device pin.
               </motion.p>
               <motion.p variants={fadeUp} custom={3} className="mt-3 text-sm text-[var(--color-text-muted)] leading-relaxed">
                 Run 50 parallel sessions — each on a different IP — just by using unique session IDs.
