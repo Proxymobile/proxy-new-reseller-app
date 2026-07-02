@@ -68,10 +68,10 @@ const COUNTRY_META: Record<string, { name: string; flag: string }> = {
 };
 
 const ROTATION_OPTIONS = [
-  { value: 'sticky', label: 'Sticky', desc: 'Same IP for entire session' },
-  { value: 'auto10', label: 'Auto 10m', desc: 'New IP every 10 minutes' },
-  { value: 'auto30', label: 'Auto 30m', desc: 'New IP every 30 minutes' },
-  { value: 'hard', label: 'Hard', desc: 'New IP every request' },
+  { value: 'sticky', label: 'Sticky', desc: 'Holds one device (IP as stable as the carrier allows)' },
+  { value: 'auto10', label: 'Auto 10m', desc: 'Fresh IP roughly every 10 minutes' },
+  { value: 'auto30', label: 'Auto (long)', desc: 'Fresh IP on a longer interval' },
+  { value: 'hard', label: 'Hard', desc: 'Strict device pin (like sticky)' },
   { value: 'none', label: 'None', desc: 'Default gateway behavior' },
 ] as const;
 
@@ -794,11 +794,11 @@ export default function KeysPage() {
             <p className="font-medium mb-1.5">Rotation Modes (-rot-)</p>
             <table className="w-full text-xs">
               <tbody className="divide-y divide-[var(--color-border)]">
-                <tr><td className="py-1 font-mono text-[var(--color-primary)] w-20">sticky</td><td className="py-1 text-[var(--color-text-muted)]">Pin to one IP for the session lifetime. Use with -sid- to keep the same IP across reconnects.</td></tr>
-                <tr><td className="py-1 font-mono text-[var(--color-primary)]">auto10</td><td className="py-1 text-[var(--color-text-muted)]">Auto-rotate every 10 minutes. Good for long scrapers.</td></tr>
-                <tr><td className="py-1 font-mono text-[var(--color-primary)]">auto30</td><td className="py-1 text-[var(--color-text-muted)]">Auto-rotate every 30 minutes.</td></tr>
-                <tr><td className="py-1 font-mono text-[var(--color-primary)]">hard</td><td className="py-1 text-[var(--color-text-muted)]">Force new IP on every connection.</td></tr>
-                <tr><td className="py-1 font-mono text-[var(--color-primary)]">none</td><td className="py-1 text-[var(--color-text-muted)]">Default gateway behavior. ~1h TTL.</td></tr>
+                <tr><td className="py-1 font-mono text-[var(--color-primary)] w-20">sticky</td><td className="py-1 text-[var(--color-text-muted)]">Hold one device for the session. Use with -sid- to keep the same device across reconnects (IP as stable as the carrier allows).</td></tr>
+                <tr><td className="py-1 font-mono text-[var(--color-primary)]">auto10</td><td className="py-1 text-[var(--color-text-muted)]">Auto-rotate roughly every 10 minutes. Good for long scrapers.</td></tr>
+                <tr><td className="py-1 font-mono text-[var(--color-primary)]">auto30</td><td className="py-1 text-[var(--color-text-muted)]">Auto-rotate on a longer interval.</td></tr>
+                <tr><td className="py-1 font-mono text-[var(--color-primary)]">hard</td><td className="py-1 text-[var(--color-text-muted)]">Strict device pin (like sticky).</td></tr>
+                <tr><td className="py-1 font-mono text-[var(--color-primary)]">none</td><td className="py-1 text-[var(--color-text-muted)]">Default gateway behavior.</td></tr>
               </tbody>
             </table>
           </div>
@@ -812,7 +812,7 @@ export default function KeysPage() {
               </code>
               <code className="block rounded bg-[var(--color-bg)] p-2 text-[10px] break-all text-[var(--color-text-muted)]">
                 socks5://user-peer-de-rot-hard:pak_xxx@gw.proxies.sx:7001
-                <span className="block text-[var(--color-text-muted)]/60 mt-0.5">SOCKS5, German peer pool, new IP each request</span>
+                <span className="block text-[var(--color-text-muted)]/60 mt-0.5">SOCKS5, German community pool, strict device pin</span>
               </code>
               <code className="block rounded bg-[var(--color-bg)] p-2 text-[10px] break-all text-[var(--color-text-muted)]">
                 http://user-mbl-pl-rot-auto10:pak_xxx@gw.proxies.sx:7000

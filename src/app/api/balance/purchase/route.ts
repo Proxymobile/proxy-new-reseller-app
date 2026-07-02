@@ -111,6 +111,9 @@ export async function POST(request: Request) {
         addTrafficGB: gb,
         extendDays: durationDays,
       });
+      // A key that hit its cap is auto-suspended by the gateway, and topUp does
+      // NOT re-enable it — without this the customer pays and the key stays dead.
+      await proxies().poolKeys.update(customer.pak_key_id, { enabled: true });
     } else {
       const key = await proxies().poolKeys.create({
         label: `customer:${session.user.id}`,

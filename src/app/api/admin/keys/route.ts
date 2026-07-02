@@ -92,7 +92,10 @@ export async function POST(request: Request) {
   // Build a ready-to-use proxy URL (US, sticky) for convenience.
   let proxyUrl: string | null = null;
   try {
-    proxyUrl = proxies().buildProxyUrl(key.key, { country: 'us', rotation: 'sticky', sid: adminId });
+    // Gateway splits the username on '-', so the sid must be [a-z0-9_]; the
+    // admin id is a UUID (contains hyphens) — sanitize to a stable safe sid.
+    const safeSid = 'u' + adminId.replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 48);
+    proxyUrl = proxies().buildProxyUrl(key.key, { country: 'us', rotation: 'sticky', sid: safeSid });
   } catch {
     proxyUrl = null;
   }
