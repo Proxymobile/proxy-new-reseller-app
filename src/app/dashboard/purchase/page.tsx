@@ -33,7 +33,7 @@ export default function PurchasePage() {
               Configure & Buy Mobile Proxies
             </h1>
             <p className="text-sm text-[var(--color-text-muted)] mt-2 max-w-xl">
-              Select your country, choose a plan, and pick your pool type. Your access key activates instantly after purchase.
+              Choose how much bandwidth you need and pick your pool type — all countries are included. Your access key activates instantly after purchase.
             </p>
           </div>
         </motion.div>

@@ -1,26 +1,14 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { config } from '@/config';
 import { customGbPrice, customGbRatePerGB, CUSTOM_MIN_GB, CUSTOM_MAX_GB } from '@/lib/pricing';
 
-const COUNTRIES = [
-  { code: 'us', name: 'USA', flag: '\u{1F1FA}\u{1F1F8}' },
-  { code: 'de', name: 'Germany', flag: '\u{1F1E9}\u{1F1EA}' },
-  { code: 'gb', name: 'UK', flag: '\u{1F1EC}\u{1F1E7}' },
-  { code: 'fr', name: 'France', flag: '\u{1F1EB}\u{1F1F7}' },
-  { code: 'es', name: 'Spain', flag: '\u{1F1EA}\u{1F1F8}' },
-  { code: 'pl', name: 'Poland', flag: '\u{1F1F5}\u{1F1F1}' },
-  { code: 'ch', name: 'Switzerland', flag: '\u{1F1E8}\u{1F1ED}' },
-  { code: 'pa', name: 'Panama', flag: '\u{1F1F5}\u{1F1E6}' },
-  { code: 'am', name: 'Armenia', flag: '\u{1F1E6}\u{1F1F2}' },
-];
-
 const INCLUDED_FEATURES = [
   'Real 4G/5G mobile devices',
-  'All 9 countries unlocked',
+  'All countries included',
   'HTTP & SOCKS5 protocols',
   'All rotation modes',
   'Unlimited parallel sessions',
@@ -41,10 +29,11 @@ function Check({ className = 'h-3.5 w-3.5 text-[var(--color-accent)]' }: { class
   );
 }
 
-function SearchIcon({ className = 'h-4 w-4' }: { className?: string }) {
+function GlobeIcon({ className = 'h-5 w-5' }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
+      <circle cx="12" cy="12" r="9" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 12h18M12 3a13.5 13.5 0 010 18M12 3a13.5 13.5 0 000 18" />
     </svg>
   );
 }
@@ -63,13 +52,11 @@ interface BuyConfiguratorProps {
 }
 
 export function BuyConfigurator({ title, subtitle }: BuyConfiguratorProps) {
-  const [country, setCountry] = useState('us');
   const [planId, setPlanId] = useState<string>(config.pricing[1]?.id ?? config.pricing[0].id);
   const [pool, setPool] = useState<'mbl' | 'peer'>('mbl');
   const [balance, setBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [search, setSearch] = useState('');
   const [sliderGB, setSliderGB] = useState<number>(config.pricing[1]?.gb ?? 25);
 
   // Sync slider when plan card clicked
@@ -94,23 +81,14 @@ export function BuyConfigurator({ title, subtitle }: BuyConfiguratorProps) {
       .catch(() => setBalance(0));
   }, []);
 
-  const plan = config.pricing.find((p) => p.id === planId) ?? config.pricing[0];
-  const ctry = COUNTRIES.find((c) => c.code === country) ?? COUNTRIES[0];
-
   // Slider GB is the source of truth for purchase
   const totalPrice = customGbPrice(sliderGB);
   const ratePerGB = customGbRatePerGB(sliderGB);
-  const baseRate = config.pricing[0].priceUsd / config.pricing[0].gb; // $7/GB (Starter rate)
+  const baseRate = config.pricing[0].priceUsd / config.pricing[0].gb; // Starter rate
   const undiscountedPrice = Math.round(sliderGB * baseRate);
   const savings = undiscountedPrice - totalPrice;
   const savingsPct = undiscountedPrice > 0 ? Math.round((savings / undiscountedPrice) * 100) : 0;
   const canAfford = balance !== null && balance >= totalPrice;
-
-  const filteredCountries = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return COUNTRIES;
-    return COUNTRIES.filter((c) => c.name.toLowerCase().includes(q) || c.code.includes(q));
-  }, [search]);
 
   async function handleBuy() {
     setLoading(true);
@@ -191,102 +169,32 @@ export function BuyConfigurator({ title, subtitle }: BuyConfiguratorProps) {
         )}
       </AnimatePresence>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* COLUMN 1 — Location */}
-        <div className="lg:col-span-5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-sm">
-          <div className="px-5 py-4 border-b border-[var(--color-border)] flex items-center justify-between">
-            <div>
-              <p className="text-[11px] uppercase tracking-widest text-[var(--color-text-muted)] font-semibold">
-                Step 1 · Location
-              </p>
-              <h3 className="text-sm font-semibold text-[var(--color-text)] mt-0.5">
-                Select country
-              </h3>
-            </div>
-            <span className="text-[10px] text-[var(--color-text-muted)]">
-              {filteredCountries.length} / {COUNTRIES.length}
-            </span>
-          </div>
-
-          <div className="p-5">
-            <div className="relative mb-4">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]">
-                <SearchIcon className="h-4 w-4" />
-              </span>
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search countries..."
-                className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] pl-9 pr-9 py-2.5 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]/60 focus:outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/15 transition"
-              />
-              {search && (
-                <button
-                  onClick={() => setSearch('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-                  aria-label="Clear search"
-                >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
-            </div>
-
-            <div className="grid grid-cols-3 gap-2 max-h-[420px] overflow-y-auto pr-0.5">
-              {filteredCountries.map((c) => {
-                const selected = country === c.code;
-                return (
-                  <motion.button
-                    key={c.code}
-                    onClick={() => setCountry(c.code)}
-                    whileTap={{ scale: 0.97 }}
-                    className={`relative rounded-xl border p-3 text-left transition-all ${
-                      selected
-                        ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 ring-2 ring-[var(--color-primary)]/20 shadow-sm'
-                        : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-bg)] hover:border-[var(--color-primary)]/40 hover:-translate-y-0.5 hover:shadow-sm'
-                    }`}
-                  >
-                    {selected && (
-                      <span className="absolute top-1.5 left-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--color-primary)] text-white">
-                        <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      </span>
-                    )}
-                    <div className="text-2xl leading-none mb-1.5 mt-1">{c.flag}</div>
-                    <p className="text-[11px] font-bold text-[var(--color-text)] uppercase tracking-wider">{c.code}</p>
-                    <p className="text-[10px] text-[var(--color-text-muted)] truncate mt-0.5">{c.name}</p>
-                  </motion.button>
-                );
-              })}
-              {filteredCountries.length === 0 && (
-                <div className="col-span-3 rounded-xl border border-dashed border-[var(--color-border)] py-10 text-center">
-                  <p className="text-xs text-[var(--color-text-muted)]">No countries match &ldquo;{search}&rdquo;</p>
-                  <button
-                    onClick={() => setSearch('')}
-                    className="text-[11px] text-[var(--color-primary)] hover:underline mt-1.5"
-                  >
-                    Clear search
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* COLUMN 2 — Plan + Pool + Features */}
-        <div className="lg:col-span-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-sm">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* COLUMN 1 — Plan + Pool + Features */}
+        <div className="lg:col-span-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-sm">
           <div className="px-5 py-4 border-b border-[var(--color-border)]">
             <p className="text-[11px] uppercase tracking-widest text-[var(--color-text-muted)] font-semibold">
-              Step 2 · Configuration
+              Step 1 · Choose bandwidth
             </p>
             <h3 className="text-sm font-semibold text-[var(--color-text)] mt-0.5">
-              Choose plan & pool
+              How much data do you need?
             </h3>
           </div>
 
           <div className="p-5 space-y-5">
+            {/* Coverage note — all countries included */}
+            <div className="flex items-center gap-3 rounded-xl bg-[var(--color-primary)]/5 border border-[var(--color-primary)]/20 px-4 py-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-primary)]">
+                <GlobeIcon className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[var(--color-text)]">All countries included</p>
+                <p className="text-[11px] text-[var(--color-text-muted)]">
+                  One key works everywhere — pick any country per request in the Keys page.
+                </p>
+              </div>
+            </div>
+
             {/* Plan picker */}
             <div>
               <p className="text-[10px] uppercase tracking-widest text-[var(--color-text-muted)] font-semibold mb-2.5">
@@ -461,13 +369,13 @@ export function BuyConfigurator({ title, subtitle }: BuyConfiguratorProps) {
           </div>
         </div>
 
-        {/* COLUMN 3 — Order Summary (light premium card) */}
-        <div className="lg:col-span-3">
+        {/* COLUMN 2 — Order Summary */}
+        <div className="lg:col-span-1">
           <div className="lg:sticky lg:top-24 rounded-2xl bg-gradient-to-b from-[var(--color-primary)]/5 via-[var(--color-surface)] to-[var(--color-surface)] border border-[var(--color-border)] shadow-sm overflow-hidden">
             {/* Header */}
             <div className="px-5 py-4 border-b border-[var(--color-border)]">
               <p className="text-[10px] uppercase tracking-widest text-[var(--color-text-muted)] font-semibold">
-                Step 3 · Review
+                Step 2 · Review
               </p>
               <h3 className="text-sm font-semibold text-[var(--color-text)] mt-0.5">
                 Order summary
@@ -478,7 +386,7 @@ export function BuyConfigurator({ title, subtitle }: BuyConfiguratorProps) {
               {/* Selection */}
               <AnimatePresence mode="wait">
                 <motion.div
-                  key={`${country}-${planId}-${pool}`}
+                  key={`${planId}-${pool}`}
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
@@ -486,12 +394,12 @@ export function BuyConfigurator({ title, subtitle }: BuyConfiguratorProps) {
                   className="space-y-3"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] text-2xl leading-none">
-                      {ctry.flag}
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-primary)]">
+                      <GlobeIcon className="h-5 w-5" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">Country</p>
-                      <p className="text-sm font-semibold text-[var(--color-text)] truncate">{ctry.name}</p>
+                      <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] font-semibold">Coverage</p>
+                      <p className="text-sm font-semibold text-[var(--color-text)] truncate">All countries</p>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
