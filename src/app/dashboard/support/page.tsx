@@ -35,7 +35,7 @@ const FAQS = [
   },
   {
     q: 'Are these IPs really mobile?',
-    a: 'Yes. Mobile IPs come from physical 4G/5G modems with real SIM cards from carriers. They are the same kind of IPs your phone gets. Not datacenter, not virtual.',
+    a: 'Yes. Mobile IPs are real 4G/5G carrier IPs — from our dedicated SIM-card modems and from real phones on carrier networks. They are the same kind of IPs your phone gets. Mobile mode never falls back to datacenter or residential IPs.',
   },
 ];
 

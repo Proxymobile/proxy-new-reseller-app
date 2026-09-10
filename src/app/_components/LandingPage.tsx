@@ -53,10 +53,11 @@ const PRICING_COUNTRIES = [
   { code: 'gb', name: 'UK', flag: '\u{1F1EC}\u{1F1E7}' },
   { code: 'fr', name: 'France', flag: '\u{1F1EB}\u{1F1F7}' },
   { code: 'es', name: 'Spain', flag: '\u{1F1EA}\u{1F1F8}' },
-  { code: 'pl', name: 'Poland', flag: '\u{1F1F5}\u{1F1F1}', badge: 'NEW' },
-  { code: 'ch', name: 'Switzerland', flag: '\u{1F1E8}\u{1F1ED}' },
-  { code: 'pa', name: 'Panama', flag: '\u{1F1F5}\u{1F1E6}' },
-  { code: 'am', name: 'Armenia', flag: '\u{1F1E6}\u{1F1F2}' },
+  { code: 'it', name: 'Italy', flag: '\u{1F1EE}\u{1F1F9}', badge: 'NEW' },
+  { code: 'nl', name: 'Netherlands', flag: '\u{1F1F3}\u{1F1F1}' },
+  { code: 'pl', name: 'Poland', flag: '\u{1F1F5}\u{1F1F1}' },
+  { code: 'br', name: 'Brazil', flag: '\u{1F1E7}\u{1F1F7}', badge: 'NEW' },
+  { code: 'mx', name: 'Mexico', flag: '\u{1F1F2}\u{1F1FD}', badge: 'NEW' },
 ];
 
 // ─── Pricing config + math ──────────────────────────────────
@@ -131,7 +132,7 @@ function LiveRouteCard() {
   const routes = [
     { flag: '\u{1F1E9}\u{1F1EA}', country: 'Germany', city: 'Frankfurt', carrier: 'Vodafone DE', latency: 38, ip: '92.196.42.xxx' },
     { flag: '\u{1F1FA}\u{1F1F8}', country: 'United States', city: 'Dallas, TX', carrier: 'T-Mobile USA', latency: 51, ip: '174.56.32.xxx' },
-    { flag: '\u{1F1EC}\u{1F1E7}', country: 'United Kingdom', city: 'London', carrier: 'EE Mobile', latency: 44, ip: '82.132.18.xxx' },
+    { flag: '\u{1F1EC}\u{1F1E7}', country: 'United Kingdom', city: 'London', carrier: 'Three UK', latency: 44, ip: '82.132.18.xxx' },
     { flag: '\u{1F1EB}\u{1F1F7}', country: 'France', city: 'Paris', carrier: 'Orange', latency: 29, ip: '93.21.74.xxx' },
   ];
   const [idx, setIdx] = useState(0);
@@ -583,7 +584,7 @@ function PoolToggle() {
             <>
               <p className="text-sm font-medium text-emerald-400 mb-1">4G/5G Mobile</p>
               <p className="text-xs text-gray-500 leading-relaxed">
-                Real SIM cards in physical modems. Carrier-assigned IPs with the highest trust scores on the internet.
+                Real SIM cards on 4G/5G carrier networks. Carrier-assigned IPs with the highest trust scores on the internet.
               </p>
               <div className="flex gap-2 mt-3">
                 <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-400">Carrier IPs</span>
@@ -1894,7 +1895,7 @@ export default function LandingPage() {
                 The right IP for every target.
               </motion.h2>
               <motion.p variants={fadeUp} custom={2} className="mt-4 text-sm text-[var(--color-text-muted)] leading-relaxed">
-                <strong className="text-[var(--color-text)]">Mobile:</strong> Real SIM cards in physical 4G/5G modems.
+                <strong className="text-[var(--color-text)]">Mobile:</strong> Real SIM cards on 4G/5G carrier networks.
                 The kind of IP a real phone gets from a carrier. Highest trust scores for the targets that block everything else.
               </motion.p>
               <motion.p variants={fadeUp} custom={3} className="mt-3 text-sm text-[var(--color-text-muted)] leading-relaxed">

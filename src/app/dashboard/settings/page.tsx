@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { COUNTRIES as MARKETED_COUNTRIES } from '@/lib/countries';
 
 interface UserProfile {
   id: string;
@@ -47,17 +48,7 @@ const DEFAULT_PREFS: LocalPrefs = {
   company: '',
 };
 
-const COUNTRIES = [
-  { code: 'us', name: 'USA' },
-  { code: 'de', name: 'Germany' },
-  { code: 'gb', name: 'UK' },
-  { code: 'fr', name: 'France' },
-  { code: 'es', name: 'Spain' },
-  { code: 'pl', name: 'Poland' },
-  { code: 'ch', name: 'Switzerland' },
-  { code: 'pa', name: 'Panama' },
-  { code: 'am', name: 'Armenia' },
-];
+const COUNTRIES = MARKETED_COUNTRIES.map((c) => ({ code: c.code, name: c.shortName }));
 
 function loadPrefs(): LocalPrefs {
   if (typeof window === 'undefined') return DEFAULT_PREFS;

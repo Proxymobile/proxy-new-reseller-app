@@ -6,7 +6,7 @@
 export const HOME_FAQS = [
   {
     q: 'What kind of IPs are these?',
-    a: 'Mobile IPs come from real 4G/5G SIM cards in physical modems — the same kind of IP your phone gets from a carrier. Residential IPs come from real Android devices on home ISP connections. None of our IPs are datacenter.',
+    a: 'Mobile IPs are real 4G/5G carrier IPs — from our dedicated SIM-card modems and from real phones on carrier networks — the same kind of IP your phone gets. Residential IPs come from real Android devices on home ISP connections. None of our IPs are datacenter.',
   },
   {
     q: 'Do I need to install anything?',

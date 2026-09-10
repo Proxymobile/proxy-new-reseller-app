@@ -11,9 +11,10 @@ export const config = {
     { id: 'pro', displayName: 'Pro', gb: 25, priceUsd: 150, durationDays: 30 },
     { id: 'scale', displayName: 'Scale', gb: 100, priceUsd: 500, durationDays: 30 },
   ],
-  // Single source of truth for offered countries. Must match the codes in
-  // src/lib/countries.ts (COUNTRIES). Mobile-strong pools first.
-  countries: ['us', 'gb', 'nl', 'pl', 'fr', 'ge', 'de', 'es', 'ch', 'pa', 'am'] as const,
+  // Marketed countries — must match the codes in src/lib/countries.ts
+  // (COUNTRIES). Only countries with sustained real MOBILE stock; the customer
+  // dashboard itself offers whatever is live right now.
+  countries: ['us', 'gb', 'de', 'fr', 'es', 'it', 'nl', 'pl', 'br', 'mx', 'ge'] as const,
   legal: {
     tosUrl: '/terms',
     privacyUrl: '/privacy',

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { config } from '@/config';
 import { GB_TIERS } from '@/lib/pricing';
-import { proxies } from '@/lib/proxies';
+import { getCountryInventory } from '@/lib/inventory';
 import { COUNTRIES, getCountry, siblingCountries } from '@/lib/countries';
 import { JsonLd } from '@/components/JsonLd';
 import {
@@ -54,26 +54,19 @@ function money(v: number) {
   return Number.isInteger(v) ? `$${v}` : `$${v.toFixed(2)}`;
 }
 
-/** Live mobile endpoint count for a country code, or null if unknown. */
-async function liveMobileStock(code: string): Promise<number | null> {
-  try {
-    const stock = await proxies().pool.getStock();
-    return stock?.pools?.mbl?.[code] ?? 0;
-  } catch {
-    return null;
-  }
-}
-
 export default async function CountryPage({ params }: { params: Promise<Params> }) {
   const { country: slug } = await params;
   const country = getCountry(slug);
   if (!country) notFound();
 
-  const mblOnline = await liveMobileStock(country.code);
+  // Live inventory (null if the upstream is unreachable — then we simply omit
+  // the badge rather than show a made-up number).
+  const live = await getCountryInventory(country.code);
+  const mobileOnline = live?.mobile ?? null;
 
   const url = absoluteUrl(`/mobile-proxies/${country.slug}`);
   const siblings = siblingCountries(country.slug, 3);
-  const carrierList = country.carriers.join(', ');
+  const carrierList = (live?.carriers.length ? live.carriers.slice(0, 5) : country.carriers).join(', ');
 
   const breadcrumbs = [
     { name: 'Home', url: SITE_URL },
@@ -150,16 +143,18 @@ export default async function CountryPage({ params }: { params: Promise<Params> 
           </p>
 
           {/* Live availability — reflects real upstream inventory */}
-          {mblOnline !== null && (
-            mblOnline > 0 ? (
-              <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-1.5 text-xs font-medium text-emerald-500">
+          {mobileOnline !== null && (
+            mobileOnline > 0 ? (
+              <div className="mt-5 inline-flex flex-wrap items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
                 <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
-                {mblOnline} live {country.shortName} mobile {mblOnline === 1 ? 'endpoint' : 'endpoints'} online now
+                {mobileOnline} {country.shortName} mobile {mobileOnline === 1 ? 'device' : 'devices'} online now
+                {live && live.modem > 0 && <span className="opacity-75">· {live.modem} dedicated {live.modem === 1 ? 'modem' : 'modems'}</span>}
               </div>
             ) : (
-              <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3.5 py-1.5 text-xs font-medium text-amber-500">
+              <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3.5 py-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
                 <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden />
-                {country.shortName} mobile pool is replenishing — residential {country.shortName} IPs are available now
+                {country.shortName} mobile stock is replenishing
+                {live && live.residential > 0 ? ` — ${country.shortName} residential IPs are available now` : ''}
               </div>
             )
           )}
@@ -173,7 +168,7 @@ export default async function CountryPage({ params }: { params: Promise<Params> 
               See {country.shortName} pricing
             </Link>
             <span className="text-xs text-[var(--color-text-muted)]">
-              Carriers: {carrierList}
+              {live?.carriers.length ? 'Carriers online now' : 'Carriers'}: {carrierList}
             </span>
           </div>
 
@@ -212,7 +207,7 @@ export default async function CountryPage({ params }: { params: Promise<Params> 
               {country.shortName} mobile proxy pricing
             </h2>
             <p className="mt-3 text-sm text-[var(--color-text-muted)]">
-              Pay per GB — no subscription, no expiry. The more you buy, the lower your per-GB rate, down to $5/GB.
+              Pay per GB — no subscription. Each purchase is valid for 30 days and top-ups extend it. The more you buy, the lower your per-GB rate, down to $5/GB.
             </p>
             <div className="mt-5 overflow-hidden rounded-2xl border border-[var(--color-border)]">
               <table className="w-full text-sm">
