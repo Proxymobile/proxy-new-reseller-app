@@ -94,7 +94,7 @@ export async function POST(request: Request) {
 
   let customerId: string;
   try {
-    const result = await provisionTraffic(session.user.id, gb, durationDays);
+    const result = await provisionTraffic(session.user.id, gb, durationDays, `invoice:${invoiceNumber}`);
     customerId = result.customerId;
   } catch (err: unknown) {
     // Refund balance on provider failure

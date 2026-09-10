@@ -166,8 +166,18 @@ CREATE INDEX IF NOT EXISTS idx_promo_redemptions_promo ON promo_redemptions(prom
 CREATE INDEX IF NOT EXISTS idx_promo_redemptions_user ON promo_redemptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_promo_redemptions_ip ON promo_redemptions(ip_address);
 
--- Seed the launch code: 200 MB of real proxy traffic provisioned on redemption
--- (grant_gb = 0.2). credit_usd carries the reference value only.
+-- Seed the launch code: 1 GB of real proxy traffic provisioned on redemption.
+-- The upstream only accepts whole-GB caps, so grant_gb must be an integer
+-- (see migrations/006_trial_whole_gb.sql). credit_usd is the reference value.
 INSERT INTO promo_codes (code, description, credit_usd, grant_gb, max_redemptions, per_ip_limit, new_users_only)
-VALUES ('START200', 'Free 200 MB welcome trial', 1.40, 0.2, 500, 1, true)
+VALUES ('START200', 'Free 1 GB welcome trial', 7.00, 1, 500, 1, true)
 ON CONFLICT (code) DO NOTHING;
+
+UPDATE promo_codes SET grant_gb = CEIL(grant_gb) WHERE grant_gb IS NOT NULL AND grant_gb <> CEIL(grant_gb);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'promo_codes_grant_gb_whole') THEN
+    ALTER TABLE promo_codes ADD CONSTRAINT promo_codes_grant_gb_whole
+      CHECK (grant_gb IS NULL OR (grant_gb >= 1 AND grant_gb = TRUNC(grant_gb)));
+  END IF;
+END $$;

@@ -1,23 +1,21 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { proxies } from '@/lib/proxies';
+import { getProxyUsername } from '@/lib/proxies';
+import { getCountryInventory } from '@/lib/inventory';
 import { queryOne } from '@/lib/db';
-import type { RotationMode, Pool } from '@proxies-sx/pool-sdk';
+import { buildCredentials, isRotation, newSessionId, sanitizeSessionId, type Network } from '@/lib/routing';
 
 interface Customer {
   pak_key: string | null;
 }
 
-const VALID_ROTATIONS: readonly RotationMode[] = ['sticky', 'auto10', 'auto30', 'hard', 'none'];
-const VALID_POOLS: readonly Pool[] = ['mbl', 'peer'];
-
-// The gateway lowercases the proxy username and splits it on '-', so the
-// session id must match [a-z0-9_] only. User IDs are UUIDs (contain hyphens),
-// which would mis-tokenize the sticky session — derive a safe, stable sid.
-function safeSid(userId: string): string {
-  return 'u' + userId.replace(/[^a-z0-9]/gi, '').toLowerCase().slice(0, 48);
-}
-
+/**
+ * Server-side proxy credential builder (for API/scripted use; the dashboard
+ * builds the same strings client-side via the shared `@/lib/routing`).
+ *
+ * Body: { country: "us", network?: "mobile"|"residential", rotation?: RotationMode,
+ *         protocol?: "http"|"socks5", sessionId?: string }
+ */
 export async function POST(request: Request) {
   const session = await auth();
   if (!session?.user?.id) {
@@ -28,70 +26,62 @@ export async function POST(request: Request) {
     'SELECT pak_key FROM customers WHERE user_id = $1',
     [session.user.id],
   );
-
   if (!customer?.pak_key) {
     return NextResponse.json({ error: 'No active proxy key' }, { status: 404 });
   }
 
-  let body: unknown;
+  let body: Record<string, unknown>;
   try {
-    body = await request.json();
+    body = (await request.json()) as Record<string, unknown>;
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { country, rotation, pool } = body as Record<string, unknown>;
+  const { country, network = 'mobile', rotation = 'sticky', protocol = 'http', sessionId } = body;
 
-  if (pool !== undefined && !VALID_POOLS.includes(pool as Pool)) {
-    return NextResponse.json({ error: 'Invalid pool' }, { status: 400 });
+  if (typeof country !== 'string' || !/^[a-z]{2}$/i.test(country)) {
+    return NextResponse.json({ error: 'country must be a 2-letter ISO code' }, { status: 400 });
   }
-  const poolChoice: Pool = pool === 'peer' ? 'peer' : 'mbl';
-
-  if (rotation !== undefined && (typeof rotation !== 'string' || !(VALID_ROTATIONS as readonly string[]).includes(rotation))) {
+  if (network !== 'mobile' && network !== 'residential') {
+    return NextResponse.json({ error: 'network must be "mobile" or "residential"' }, { status: 400 });
+  }
+  if (!isRotation(rotation)) {
     return NextResponse.json({ error: 'Invalid rotation' }, { status: 400 });
   }
+  if (protocol !== 'http' && protocol !== 'socks5') {
+    return NextResponse.json({ error: 'protocol must be "http" or "socks5"' }, { status: 400 });
+  }
+  const sid = (typeof sessionId === 'string' && sanitizeSessionId(sessionId)) || newSessionId();
 
-  // Validate the country against LIVE pool inventory (not a hardcoded list) so
-  // we never advertise/allow a country that has no online endpoints in the
-  // selected pool, and never reject a country that genuinely has stock.
-  if (country !== undefined && country !== null) {
-    if (typeof country !== 'string') {
-      return NextResponse.json({ error: 'Invalid country' }, { status: 400 });
-    }
-    try {
-      const stock = await proxies().pool.getStock();
-      const available = stock.pools[poolChoice] ?? {};
-      if (!(available[country] > 0)) {
-        const alternatives = Object.keys(available)
-          .filter((c) => available[c] > 0)
-          .sort()
-          .join(', ');
-        return NextResponse.json(
-          { error: `No ${poolChoice} endpoints available in "${country}". Try: ${alternatives}` },
-          { status: 409 },
-        );
-      }
-    } catch (e) {
-      // If the stock lookup fails, don't hard-block — let the gateway validate.
-      console.error('[pool/proxy-url] stock check failed:', e instanceof Error ? e.message : e);
+  // Reject countries with no live stock for the chosen network, so a customer
+  // never gets a string that 502s at the gateway. If the stock lookup itself
+  // fails, don't hard-block — the gateway is the final authority.
+  const inv = await getCountryInventory(country);
+  const cc = country.toLowerCase();
+  if (inv) {
+    const available = network === 'mobile' ? inv.mobile : inv.residential;
+    if (available <= 0) {
+      return NextResponse.json(
+        { error: `No ${network} IPs are online in "${cc.toUpperCase()}" right now` },
+        { status: 409 },
+      );
     }
   }
 
   try {
-    const url = proxies().buildProxyUrl(customer.pak_key, {
-      country: typeof country === 'string' ? country : undefined,
-      rotation: ((rotation as string) ?? 'sticky') as RotationMode,
-      pool: poolChoice,
-      sid: safeSid(session.user.id),
+    const creds = buildCredentials({
+      proxyUsername: getProxyUsername(),
+      pakKey: customer.pak_key,
+      network: network as Network,
+      country: cc,
+      hasModemStock: (inv?.modem ?? 0) > 0,
+      rotation,
+      protocol,
+      sid,
     });
-
-    return NextResponse.json({ proxyUrl: url });
+    return NextResponse.json({ proxyUrl: creds.url, ...creds });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error('[pool/proxy-url] Failed to build proxy URL:', {
-      error: message,
-      userId: session.user.id,
-    });
+    console.error('[pool/proxy-url] Failed to build proxy URL:', err instanceof Error ? err.message : err);
     return NextResponse.json({ error: 'Failed to generate proxy URL' }, { status: 500 });
   }
 }

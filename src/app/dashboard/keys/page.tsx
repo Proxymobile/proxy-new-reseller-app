@@ -1,230 +1,383 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  GATEWAY_HOST,
+  HTTP_PORT,
+  SOCKS5_PORT,
+  OUTPUT_FORMATS,
+  ROTATIONS,
+  buildCredentials,
+  codeSnippets,
+  formatCredentials,
+  newSessionId,
+  rotationOption,
+  sanitizeSessionPrefix,
+  type Network,
+  type OutputFormat,
+  type Protocol,
+  type ProxyCredentials,
+} from '@/lib/routing';
+import type { RotationMode } from '@proxies-sx/pool-sdk';
+
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 interface KeyData {
   id: string;
   key: string;
-  label: string;
-  trafficCapGB: number | null;
-  trafficUsedGB: number;
-  trafficUsedMB: number;
   enabled: boolean;
+  trafficCapGB: number | null;
+  trafficUsedMB: number;
+  trafficUsedGB?: number;
   expiresAt: string | null;
-  isExpired: boolean;
+  isExpired?: boolean;
   lastUsedAt: string | null;
-  createdAt: number;
 }
 
-interface PoolStock {
-  pools: { mbl: Record<string, number>; peer: Record<string, number> };
-  totals: { mbl: number; peer: number; all: number };
-  generatedAt: string;
+interface CountryInventory {
+  code: string;
+  modem: number;
+  peerMobile: number;
+  residential: number;
+  mobile: number;
+  carriers: string[];
 }
 
-interface TrackedSession {
-  sid: string;
+interface LiveSession {
+  sessionKey: string;
+  sessionId: string;
+  pool: string;
   country: string;
-  pool: 'mbl' | 'peer';
+  carrier: string;
   rotation: string;
-  protocol: 'http' | 'socks5';
-  url: string;
-  createdAt: number;
+  lastActivityAt: number;
+  requestCount: number;
+  bytesIn: number;
+  bytesOut: number;
 }
 
-const SESSIONS_KEY = 'proxy_sessions';
+type KeyStatus = 'active' | 'paused' | 'exhausted' | 'expired';
 
-function loadSessions(): TrackedSession[] {
+// Shown only if live inventory can't be loaded — countries with a long record
+// of real mobile stock, so the builder still works during an upstream blip.
+// The first six have dedicated carrier modems.
+const FALLBACK_MOBILE = ['us', 'gb', 'fr', 'nl', 'pl', 'ge', 'de', 'es', 'it'];
+const FALLBACK_MODEM = new Set(['us', 'gb', 'fr', 'nl', 'pl', 'ge']);
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+const regionNames = typeof Intl !== 'undefined' && 'DisplayNames' in Intl
+  ? new Intl.DisplayNames(['en'], { type: 'region' })
+  : null;
+
+function countryName(code: string): string {
   try {
-    return JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]');
-  } catch { return []; }
+    return regionNames?.of(code.toUpperCase()) ?? code.toUpperCase();
+  } catch {
+    return code.toUpperCase();
+  }
 }
 
-function saveSessions(sessions: TrackedSession[]) {
-  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+function flag(code: string): string {
+  if (!/^[a-z]{2}$/i.test(code)) return '';
+  return String.fromCodePoint(...code.toUpperCase().split('').map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
 }
 
 function timeAgo(ts: number): string {
-  const diff = Date.now() - ts;
-  const mins = Math.floor(diff / 60000);
+  const mins = Math.floor((Date.now() - ts) / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
 }
 
-const COUNTRY_META: Record<string, { name: string; flag: string }> = {
-  us: { name: 'United States', flag: '\u{1F1FA}\u{1F1F8}' },
-  de: { name: 'Germany', flag: '\u{1F1E9}\u{1F1EA}' },
-  pl: { name: 'Poland', flag: '\u{1F1F5}\u{1F1F1}' },
-  fr: { name: 'France', flag: '\u{1F1EB}\u{1F1F7}' },
-  es: { name: 'Spain', flag: '\u{1F1EA}\u{1F1F8}' },
-  gb: { name: 'United Kingdom', flag: '\u{1F1EC}\u{1F1E7}' },
-  ch: { name: 'Switzerland', flag: '\u{1F1E8}\u{1F1ED}' },
-  pa: { name: 'Panama', flag: '\u{1F1F5}\u{1F1E6}' },
-  am: { name: 'Armenia', flag: '\u{1F1E6}\u{1F1F2}' },
+function copyText(text: string): void {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+    return;
+  }
+  fallbackCopy(text);
+}
+
+function fallbackCopy(text: string): void {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch { /* ignore */ }
+  document.body.removeChild(ta);
+}
+
+function downloadText(filename: string, text: string): void {
+  const url = URL.createObjectURL(new Blob([text + '\n'], { type: 'text/plain' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function keyStatus(key: KeyData, usedGB: number): KeyStatus {
+  const expired = key.isExpired || (key.expiresAt ? new Date(key.expiresAt).getTime() < Date.now() : false);
+  if (expired) return 'expired';
+  if (key.trafficCapGB != null && usedGB >= key.trafficCapGB) return 'exhausted';
+  if (!key.enabled) return 'paused';
+  return 'active';
+}
+
+const STATUS_META: Record<KeyStatus, { label: string; className: string }> = {
+  active: { label: 'Active', className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' },
+  paused: { label: 'Paused', className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30' },
+  exhausted: { label: 'Out of traffic', className: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30' },
+  expired: { label: 'Expired', className: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30' },
 };
 
-const ROTATION_OPTIONS = [
-  { value: 'sticky', label: 'Sticky', desc: 'Holds one device (IP as stable as the carrier allows)' },
-  { value: 'auto10', label: 'Auto 10m', desc: 'Fresh IP roughly every 10 minutes' },
-  { value: 'auto30', label: 'Auto (long)', desc: 'Fresh IP on a longer interval' },
-  { value: 'hard', label: 'Hard', desc: 'Strict device pin (like sticky)' },
-  { value: 'none', label: 'None', desc: 'Default gateway behavior' },
-] as const;
+// ─── Small UI pieces ────────────────────────────────────────────────────────
 
-const USE_CASES = [
-  'Multi-account management',
-  'Web scraping without bans',
-  'Geo-specific content access',
-  'Social media automation',
-];
-
-const INCLUDED_FEATURES = [
-  'Real 4G/5G mobile devices',
-  'Carrier-assigned IPs',
-  'Unlimited parallel sessions',
-  'On-demand IP rotation',
-  'HTTP & SOCKS5 protocols',
-];
-
-function randomHex(len: number) {
-  const chars = '0123456789abcdef';
-  let s = '';
-  for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * 16)];
-  return s;
+function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return (
+    <section className={`rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] ${className}`}>
+      {children}
+    </section>
+  );
 }
 
-function buildProxyUrlLocal(
-  username: string,
-  pakKey: string,
-  opts: {
-    country: string;
-    pool: 'mbl' | 'peer';
-    rotation: string;
-    sid?: string;
-    protocol: 'http' | 'socks5';
-  },
-) {
-  const tokens = [opts.pool, opts.country];
-  if (opts.sid) tokens.push('sid', opts.sid);
-  if (opts.rotation && opts.rotation !== 'none') tokens.push('rot', opts.rotation);
-  const user = `${username}-${tokens.join('-')}`;
-  const port = opts.protocol === 'socks5' ? 7001 : 7000;
-  return `${opts.protocol}://${encodeURIComponent(user)}:${encodeURIComponent(pakKey)}@gw.proxies.sx:${port}`;
+function StepLabel({ n, children }: { n: number; children: React.ReactNode }) {
+  return (
+    <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-2.5">
+      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-primary)]/10 text-[10px] text-[var(--color-primary)]">{n}</span>
+      {children}
+    </p>
+  );
 }
+
+function CopyButton({ text, label = 'Copy', className = '' }: { text: string; label?: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        copyText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1600);
+      }}
+      className={`shrink-0 rounded-lg border border-[var(--color-border)] px-2.5 py-1 text-xs font-medium text-[var(--color-primary)] transition hover:bg-[var(--color-surface-hover)] ${className}`}
+    >
+      {copied ? 'Copied ✓' : label}
+    </button>
+  );
+}
+
+function Segmented<T extends string>({
+  value,
+  onChange,
+  options,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  options: { value: T; label: string; hint?: string }[];
+}) {
+  return (
+    <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          onClick={() => onChange(o.value)}
+          aria-pressed={value === o.value}
+          className={`rounded-xl border px-3 py-2.5 text-left transition ${
+            value === o.value
+              ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 ring-1 ring-[var(--color-primary)]/25'
+              : 'border-[var(--color-border)] hover:bg-[var(--color-surface-hover)]'
+          }`}
+        >
+          <span className={`block text-sm font-semibold ${value === o.value ? 'text-[var(--color-primary)]' : 'text-[var(--color-text)]'}`}>
+            {o.label}
+          </span>
+          {o.hint && <span className="block text-[11px] text-[var(--color-text-muted)] mt-0.5">{o.hint}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Field({ label, value, secret = false }: { label: string; value: string; secret?: boolean }) {
+  const [shown, setShown] = useState(!secret);
+  return (
+    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{label}</span>
+        <div className="flex items-center gap-1.5">
+          {secret && (
+            <button
+              type="button"
+              onClick={() => setShown(!shown)}
+              className="text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+            >
+              {shown ? 'Hide' : 'Show'}
+            </button>
+          )}
+          <CopyButton text={value} />
+        </div>
+      </div>
+      <code className="mt-1 block break-all font-mono text-[13px] text-[var(--color-text)]">
+        {shown ? value : `${value.slice(0, 6)}${'•'.repeat(Math.max(8, value.length - 6))}`}
+      </code>
+    </div>
+  );
+}
+
+// ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function KeysPage() {
   const [keyData, setKeyData] = useState<KeyData | null>(null);
   const [proxyUsername, setProxyUsername] = useState('');
-  const [stock, setStock] = useState<PoolStock | null>(null);
+  const [countries, setCountries] = useState<CountryInventory[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [actionLoading, setActionLoading] = useState('');
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [busy, setBusy] = useState('');
+  const [confirmRotate, setConfirmRotate] = useState(false);
 
-  // Generator state
+  // Builder state
+  const [network, setNetwork] = useState<Network>('mobile');
   const [country, setCountry] = useState('us');
-  const [protocol, setProtocol] = useState<'http' | 'socks5'>('http');
-  const [pool, setPool] = useState<'mbl' | 'peer'>('mbl');
-  const [rotation, setRotation] = useState('sticky');
-  const [sessionPrefix, setSessionPrefix] = useState('s');
-  const [sessionCount, setSessionCount] = useState(1);
-  const [generatedUrls, setGeneratedUrls] = useState<string[]>([]);
-  const [showReference, setShowReference] = useState(false);
-  const [sessions, setSessions] = useState<TrackedSession[]>([]);
   const [countrySearch, setCountrySearch] = useState('');
+  const [rotation, setRotation] = useState<RotationMode>('sticky');
+  const [protocol, setProtocol] = useState<Protocol>('http');
+  const [quantity, setQuantity] = useState(1);
+  const [prefix, setPrefix] = useState('');
+  const [format, setFormat] = useState<OutputFormat>('url');
+  const [seed, setSeed] = useState(0);
+  const [snippet, setSnippet] = useState('curl');
 
-  useEffect(() => {
-    setSessions(loadSessions());
-  }, []);
+  // Live sessions
+  const [sessions, setSessions] = useState<LiveSession[] | null>(null);
+  const [sessionsError, setSessionsError] = useState('');
 
   const loadKey = useCallback(async () => {
     try {
       const res = await fetch('/api/pool/keys');
       const data = await res.json();
-      if (!res.ok && res.status !== 502) throw new Error(data.error ?? `HTTP ${res.status}`);
       setKeyData(data.key ?? null);
       if (data.proxyUsername) setProxyUsername(data.proxyUsername);
-      if (data.error) setError(data.error);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to load key');
+      setError(data.error ?? '');
+    } catch {
+      setError('Could not load your key — check your connection and refresh.');
     }
     setLoading(false);
   }, []);
 
-  const loadStock = useCallback(async () => {
+  const loadInventory = useCallback(async () => {
     try {
       const res = await fetch('/api/pool/stock');
-      if (res.ok) {
-        const data = await res.json();
-        setStock(data);
-      }
+      if (!res.ok) return;
+      const data = (await res.json()) as { countries?: CountryInventory[] };
+      if (Array.isArray(data.countries)) setCountries(data.countries);
     } catch {
-      // non-critical
+      // Non-critical: the builder falls back to known-good countries.
+    }
+  }, []);
+
+  const loadSessions = useCallback(async () => {
+    try {
+      const res = await fetch('/api/pool/sessions');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Could not load sessions');
+      setSessions(data.sessions ?? []);
+      setSessionsError('');
+    } catch (err) {
+      setSessionsError(err instanceof Error ? err.message : 'Could not load sessions');
     }
   }, []);
 
   useEffect(() => {
     loadKey();
-    loadStock();
-  }, [loadKey, loadStock]);
+    loadInventory();
+  }, [loadKey, loadInventory]);
 
-  const countries = useMemo(() => {
-    const baseList = Object.keys(COUNTRY_META);
-    const stockCodes = stock
-      ? new Set([...Object.keys(stock.pools.mbl), ...Object.keys(stock.pools.peer)])
-      : new Set();
-    const allCodes = Array.from(new Set([...baseList, ...Array.from(stockCodes) as string[]]));
+  const hasKey = keyData !== null;
+  useEffect(() => {
+    if (!hasKey) return;
+    loadSessions();
+    const id = setInterval(loadSessions, 30_000);
+    return () => clearInterval(id);
+  }, [hasKey, loadSessions]);
 
-    return allCodes
-      .map((code) => ({
+  // Countries offered for the selected network, most stock first.
+  const offered = useMemo(() => {
+    if (!countries) {
+      return FALLBACK_MOBILE.map((code) => ({
         code,
-        mbl: stock?.pools.mbl[code] ?? 0,
-        peer: stock?.pools.peer[code] ?? 0,
-        total: (stock?.pools.mbl[code] ?? 0) + (stock?.pools.peer[code] ?? 0),
-        ...COUNTRY_META[code] ?? { name: code.toUpperCase(), flag: '' },
+        count: null as number | null,
+        modem: FALLBACK_MODEM.has(code) ? 1 : 0,
+        carriers: [] as string[],
+      }));
+    }
+    return countries
+      .map((c) => ({
+        code: c.code,
+        count: network === 'mobile' ? c.mobile : c.residential,
+        modem: c.modem,
+        carriers: c.carriers,
       }))
-      .filter((c) => {
-        if (!countrySearch) return true;
-        const q = countrySearch.toLowerCase();
-        return c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q);
-      })
-      .sort((a, b) => b.total - a.total);
-  }, [stock, countrySearch]);
+      .filter((c) => (c.count ?? 0) > 0)
+      .sort((a, b) => (b.count ?? 0) - (a.count ?? 0));
+  }, [countries, network]);
 
-  const selectedCountryMeta = COUNTRY_META[country] ?? { name: country.toUpperCase(), flag: '' };
-
-  function generateUrls() {
-    if (!keyData || !proxyUsername) return;
-    const urls: string[] = [];
-    const newSessions: TrackedSession[] = [];
-    for (let i = 0; i < sessionCount; i++) {
-      const sid = sessionCount === 1 && !sessionPrefix
-        ? undefined
-        : `${sessionPrefix}${randomHex(8)}`;
-      const url = buildProxyUrlLocal(proxyUsername, keyData.key, {
-        country, pool, rotation, sid, protocol,
-      });
-      urls.push(url);
-      if (sid) {
-        newSessions.push({ sid, country, pool, rotation, protocol, url, createdAt: Date.now() });
-      }
+  // Keep the selected country valid when the network or stock changes.
+  useEffect(() => {
+    if (offered.length && !offered.some((c) => c.code === country)) {
+      setCountry(offered.some((c) => c.code === 'us') ? 'us' : offered[0].code);
     }
-    setGeneratedUrls(urls);
-    if (newSessions.length > 0) {
-      const updated = [...newSessions, ...sessions].slice(0, 200);
-      setSessions(updated);
-      saveSessions(updated);
-    }
-  }
+  }, [offered, country]);
 
-  async function handleAction(action: string) {
-    setActionLoading(action);
-    setMessage(null);
+  const visibleCountries = useMemo(() => {
+    const q = countrySearch.trim().toLowerCase();
+    if (!q) return offered;
+    return offered.filter((c) => c.code.includes(q) || countryName(c.code).toLowerCase().includes(q));
+  }, [offered, countrySearch]);
+
+  const selectedModem = offered.find((c) => c.code === country)?.modem ?? 0;
+  const rotationMeta = rotationOption(rotation);
+  const effectiveQuantity = rotationMeta.needsSession ? quantity : 1;
+
+  const credentials: ProxyCredentials[] = useMemo(() => {
+    if (!keyData || !proxyUsername) return [];
+    return Array.from({ length: effectiveQuantity }, () =>
+      buildCredentials({
+        proxyUsername,
+        pakKey: keyData.key,
+        network,
+        country,
+        hasModemStock: selectedModem > 0,
+        rotation,
+        protocol,
+        sid: newSessionId(prefix || 's'),
+      }),
+    );
+    // `seed` is a dependency on purpose: bumping it issues fresh session ids.
+  }, [keyData, proxyUsername, network, country, selectedModem, rotation, protocol, effectiveQuantity, prefix, seed]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const lines = credentials.map((c) => formatCredentials(c, format));
+  const first = credentials[0];
+  const snippets = first ? codeSnippets(first) : [];
+  const activeSnippet = snippets.find((s) => s.id === snippet) ?? snippets[0];
+
+  async function keyAction(action: 'toggle_enabled' | 'regenerate') {
+    setBusy(action);
+    setNotice(null);
     try {
       const res = await fetch('/api/pool/keys', {
         method: 'PATCH',
@@ -233,631 +386,596 @@ export default function KeysPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Action failed');
-
-      if (action === 'delete') {
-        setKeyData(null);
-        setGeneratedUrls([]);
-        setMessage({ type: 'success', text: 'Key deleted. Purchase a new plan to get a fresh key.' });
+      setKeyData(data.key);
+      if (action === 'regenerate') {
+        setSeed((s) => s + 1);
+        setNotice({ type: 'success', text: 'New password issued and old connections closed. Update the password in your tools — the old one stops working within ~30 seconds.' });
       } else {
-        setKeyData(data.key);
-        if (action === 'toggle_enabled') {
-          setMessage({ type: 'success', text: data.key.enabled ? 'Key enabled' : 'Key suspended' });
-        } else if (action === 'regenerate') {
-          setGeneratedUrls([]);
-          setMessage({ type: 'success', text: 'Key secret rotated. Re-generate your proxy URLs.' });
-        }
+        setNotice({ type: 'success', text: data.key.enabled ? 'Key resumed — your proxies work again.' : 'Key paused — all connections were closed.' });
       }
-      setConfirmDelete(false);
-    } catch (err: unknown) {
-      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Action failed' });
+      loadSessions();
+    } catch (err) {
+      setNotice({ type: 'error', text: err instanceof Error ? err.message : 'Action failed' });
     }
-    setActionLoading('');
+    setConfirmRotate(false);
+    setBusy('');
   }
+
+  async function closeSessions(sessionKey?: string) {
+    setBusy(sessionKey ?? 'close_all');
+    try {
+      const res = await fetch('/api/pool/sessions', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sessionKey ? { sessionKey } : {}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Could not close sessions');
+      await loadSessions();
+    } catch (err) {
+      setSessionsError(err instanceof Error ? err.message : 'Could not close sessions');
+    }
+    setBusy('');
+  }
+
+  // ── Loading / empty states ──
 
   if (loading) {
-    return <p className="text-[var(--color-text-muted)]">Loading...</p>;
-  }
-
-  if (!keyData) {
     return (
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--color-text)] mb-4">Proxy Keys</h1>
-        {message && (
-          <div className={`rounded-lg border p-3 mb-4 text-sm ${
-            message.type === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-600'
-          }`}>{message.text}</div>
-        )}
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-8 text-center">
-          <p className="text-[var(--color-text-muted)] mb-4">
-            No proxy key yet. Purchase a plan to get started.
-          </p>
-          {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
-          <a
-            href="/dashboard/purchase"
-            className="inline-block mt-4 rounded-lg bg-[var(--color-primary)] px-6 py-2.5 text-sm font-medium text-white hover:opacity-90 transition"
-          >
-            Purchase a plan
-          </a>
-        </div>
+      <div className="space-y-4" aria-busy>
+        <div className="h-8 w-56 rounded-lg bg-[var(--color-surface)] animate-pulse" />
+        <div className="h-32 rounded-2xl bg-[var(--color-surface)] animate-pulse" />
+        <div className="h-96 rounded-2xl bg-[var(--color-surface)] animate-pulse" />
       </div>
     );
   }
 
-  const usedGB = keyData.trafficUsedMB != null
-    ? keyData.trafficUsedMB / 1024
-    : (keyData.trafficUsedGB ?? 0);
-  const capGB = keyData.trafficCapGB ?? 0;
-  const usagePercent = capGB > 0 ? Math.min(100, (usedGB / capGB) * 100) : 0;
-  const isActive = keyData.enabled && !keyData.isExpired;
+  if (!keyData) {
+    return (
+      <div className="space-y-5">
+        <h1 className="text-2xl font-bold text-[var(--color-text)]">Proxy Keys</h1>
+        {error && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-400">{error}</div>
+        )}
+        <Card className="p-8 sm:p-10 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--color-primary)]/10 text-2xl" aria-hidden>🔑</div>
+          <h2 className="mt-4 text-lg font-semibold text-[var(--color-text)]">You don&apos;t have a proxy key yet</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-[var(--color-text-muted)]">
+            Buy traffic and your key is created instantly. Then pick a country here and copy your proxy — it works in any
+            HTTP or SOCKS5 client.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <Link
+              href="/dashboard/purchase"
+              className="rounded-xl bg-[var(--color-primary)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+            >
+              Buy traffic
+            </Link>
+            <Link
+              href="/dashboard/billing"
+              className="rounded-xl border border-[var(--color-border)] px-5 py-2.5 text-sm font-medium text-[var(--color-text)] transition hover:bg-[var(--color-surface-hover)]"
+            >
+              Have a promo code?
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
-  // Live preview URL
-  const previewSid = sessionCount > 1 || sessionPrefix ? `${sessionPrefix || 's'}${randomHex(4)}` : undefined;
-  const previewUrl = isActive && proxyUsername
-    ? buildProxyUrlLocal(proxyUsername, keyData.key, { country, pool, rotation, sid: previewSid, protocol })
-    : '';
+  // ── Key status ──
+
+  const usedGB = keyData.trafficUsedMB != null ? keyData.trafficUsedMB / 1024 : keyData.trafficUsedGB ?? 0;
+  const capGB = keyData.trafficCapGB;
+  const remainingGB = capGB != null ? Math.max(0, capGB - usedGB) : null;
+  const usagePct = capGB ? Math.min(100, (usedGB / capGB) * 100) : 0;
+  const status = keyStatus(keyData, usedGB);
+  const usable = status === 'active';
+  const daysLeft = keyData.expiresAt ? Math.ceil((new Date(keyData.expiresAt).getTime() - Date.now()) / 86_400_000) : null;
+  const lowTraffic = status === 'active' && capGB != null && usagePct >= 85;
+  const expiringSoon = status === 'active' && daysLeft != null && daysLeft <= 3;
 
   return (
     <div className="space-y-5">
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text)]">Configure Your Proxy</h1>
-          <p className="text-sm text-[var(--color-text-muted)] mt-1">
-            Build connection URLs from your active key. Pick country, pool, and rotation — done.
+          <h1 className="text-2xl font-bold text-[var(--color-text)]">Proxy Keys</h1>
+          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+            Pick a network and country, copy your proxy, and go. Every setting lives in the username — no extra setup.
           </p>
         </div>
         <button
-          onClick={() => setShowReference(!showReference)}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-xs font-medium text-[var(--color-primary)] hover:bg-[var(--color-bg)] transition"
+          type="button"
+          onClick={() => { loadKey(); loadInventory(); loadSessions(); }}
+          className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-2 text-xs font-medium text-[var(--color-text-muted)] transition hover:text-[var(--color-text)]"
         >
-          <span>{showReference ? '−' : '+'}</span>
-          {showReference ? 'Hide' : 'Open'} Connection Guide
+          Refresh
         </button>
       </div>
 
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-400">{error}</div>
+      )}
+      {notice && (
+        <div
+          role="status"
+          className={`flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
+            notice.type === 'success'
+              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+              : 'border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400'
+          }`}
+        >
+          <span>{notice.text}</span>
+          <button type="button" onClick={() => setNotice(null)} className="opacity-60 hover:opacity-100" aria-label="Dismiss">×</button>
         </div>
       )}
 
-      {message && (
-        <div className={`rounded-lg border p-3 text-sm ${
-          message.type === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-600'
-        }`}>
-          {message.text}
-          <button onClick={() => setMessage(null)} className="float-right text-xs opacity-60 hover:opacity-100">&times;</button>
+      {/* Out-of-service / warning banners */}
+      {(status === 'exhausted' || status === 'expired') && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4">
+          <div>
+            <p className="text-sm font-semibold text-red-600 dark:text-red-400">
+              {status === 'expired' ? 'Your traffic has expired' : 'You have used all your traffic'}
+            </p>
+            <p className="mt-0.5 text-xs text-red-600/80 dark:text-red-400/80">
+              Your proxies are stopped. Buy more traffic and the same key and proxy strings start working again right away.
+            </p>
+          </div>
+          <Link href="/dashboard/purchase" className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
+            Buy more traffic
+          </Link>
+        </div>
+      )}
+      {(lowTraffic || expiringSoon) && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-3">
+          <p className="text-sm text-amber-700 dark:text-amber-400">
+            {lowTraffic
+              ? `Running low — ${remainingGB?.toFixed(2)} GB left.`
+              : `Your traffic expires in ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`}{' '}
+            Top up to keep your proxies running without interruption.
+          </p>
+          <Link href="/dashboard/purchase" className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
+            Top up
+          </Link>
         </div>
       )}
 
-      {/* Compact Key Status Bar */}
-      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3 flex-wrap">
-            <span
-              className="inline-block rounded-full px-2.5 py-0.5 text-xs font-medium"
-              style={{
-                backgroundColor: isActive ? '#dcfce7' : '#fee2e2',
-                color: isActive ? '#059669' : '#dc2626',
-              }}
-            >
-              {keyData.isExpired ? 'Expired' : keyData.enabled ? 'Active' : 'Suspended'}
+      {/* Key status + connection details */}
+      <div className="grid gap-4 lg:grid-cols-5">
+        <Card className="p-5 lg:col-span-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${STATUS_META[status].className}`}>
+              {STATUS_META[status].label}
             </span>
-            <span className="text-xs font-mono text-[var(--color-text-muted)]">{keyData.id}</span>
-            {keyData.expiresAt && (
-              <span className="text-xs text-[var(--color-text-muted)]">
-                Expires {new Date(keyData.expiresAt).toLocaleDateString()}
-              </span>
+            {keyData.lastUsedAt && (
+              <span className="text-[11px] text-[var(--color-text-muted)]">Last used {timeAgo(new Date(keyData.lastUsedAt).getTime())}</span>
             )}
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              onClick={() => handleAction('toggle_enabled')}
-              disabled={!!actionLoading}
-              className="rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition disabled:opacity-40"
-            >
-              {actionLoading === 'toggle_enabled' ? '...' : keyData.enabled ? 'Suspend' : 'Enable'}
-            </button>
-            <button
-              onClick={() => handleAction('regenerate')}
-              disabled={!!actionLoading}
-              className="rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs text-[var(--color-primary)] hover:bg-[var(--color-surface-hover)] transition disabled:opacity-40"
-            >
-              {actionLoading === 'regenerate' ? '...' : 'Rotate Secret'}
-            </button>
-            <button
-              onClick={() => { loadKey(); loadStock(); }}
-              disabled={!!actionLoading}
-              className="rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition disabled:opacity-40"
-            >
-              Refresh
-            </button>
-            {!confirmDelete ? (
-              <button
-                onClick={() => setConfirmDelete(true)}
-                disabled={!!actionLoading}
-                className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs text-red-500 hover:bg-red-50 transition disabled:opacity-40"
-              >
-                Delete
-              </button>
-            ) : (
-              <>
-                <button
-                  onClick={() => handleAction('delete')}
-                  disabled={!!actionLoading}
-                  className="rounded-lg bg-red-500 px-2.5 py-1.5 text-xs font-medium text-white hover:opacity-90 transition disabled:opacity-40"
-                >
-                  {actionLoading === 'delete' ? '...' : 'Confirm Delete'}
-                </button>
-                <button
-                  onClick={() => setConfirmDelete(false)}
-                  className="rounded-lg border border-[var(--color-border)] px-2.5 py-1.5 text-xs text-[var(--color-text-muted)] transition"
-                >
-                  Cancel
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-        {capGB > 0 && (
-          <div className="mt-3">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs text-[var(--color-text-muted)]">Traffic</span>
-              <span className="text-xs font-medium text-[var(--color-text)]">
-                {usedGB.toFixed(2)} / {capGB} GB ({usagePercent.toFixed(1)}%)
+
+          <div className="mt-5">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="text-3xl font-bold tabular-nums text-[var(--color-text)]">
+                {remainingGB != null ? remainingGB.toFixed(2) : '∞'}
+                <span className="ml-1 text-sm font-medium text-[var(--color-text-muted)]">GB left</span>
               </span>
+              {capGB != null && (
+                <span className="text-xs tabular-nums text-[var(--color-text-muted)]">{usedGB.toFixed(2)} / {capGB} GB used</span>
+              )}
             </div>
-            <div className="h-1.5 rounded-full bg-[var(--color-bg)] overflow-hidden">
+            {capGB != null && (
               <div
-                className="h-full rounded-full transition-all"
-                style={{
-                  width: `${usagePercent}%`,
-                  backgroundColor: usagePercent > 90 ? '#dc2626' : usagePercent > 70 ? '#f59e0b' : 'var(--color-primary)',
-                }}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Three-column Configurator */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* COLUMN 1 — SELECT LOCATION */}
-        <div className="lg:col-span-5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] uppercase tracking-widest text-[var(--color-text-muted)] font-semibold">
-              Select Location
-            </p>
-            <span className="text-[10px] text-[var(--color-text-muted)]">
-              {stock?.totals.all ?? 0} endpoints
-            </span>
-          </div>
-
-          <input
-            type="text"
-            value={countrySearch}
-            onChange={(e) => setCountrySearch(e.target.value)}
-            placeholder="Search countries..."
-            className="w-full mb-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]/50 focus:outline-none focus:border-[var(--color-primary)]"
-          />
-
-          <div className="grid grid-cols-3 gap-2 max-h-[420px] overflow-y-auto">
-            {countries.map((c) => {
-              const selected = country === c.code;
-              return (
-                <button
-                  key={c.code}
-                  onClick={() => setCountry(c.code)}
-                  className={`relative rounded-lg border p-2.5 text-left transition-all ${
-                    selected
-                      ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 ring-1 ring-[var(--color-primary)]/30'
-                      : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-bg)] hover:border-[var(--color-primary)]/30'
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className="text-base leading-none">{c.flag}</span>
-                    <span className="text-xs font-semibold text-[var(--color-text)] uppercase">{c.code}</span>
-                  </div>
-                  <p className="text-[10px] text-[var(--color-text)] font-medium truncate">{c.name}</p>
-                  {c.total > 0 && (
-                    <p className="text-[9px] text-[var(--color-text-muted)] mt-0.5">{c.total} online</p>
-                  )}
-                </button>
-              );
-            })}
-            {countries.length === 0 && (
-              <p className="col-span-3 text-center text-xs text-[var(--color-text-muted)] py-6">
-                No countries match
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* COLUMN 2 — CONFIGURATION */}
-        <div className="lg:col-span-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 space-y-5">
-          <div>
-            <p className="text-[10px] uppercase tracking-widest text-[var(--color-text-muted)] font-semibold mb-2.5">
-              Pool Type
-            </p>
-            <div className="grid grid-cols-2 gap-1.5">
-              {[
-                { value: 'mbl' as const, label: 'Mobile', desc: '4G/5G' },
-                { value: 'peer' as const, label: 'Residential', desc: 'Home ISP' },
-              ].map((p) => (
-                <button
-                  key={p.value}
-                  onClick={() => setPool(p.value)}
-                  className={`rounded-lg border py-2 text-xs font-medium transition ${
-                    pool === p.value
-                      ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-primary)]'
-                      : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg)]'
-                  }`}
-                >
-                  {p.label}
-                  <span className="block text-[9px] opacity-70">{p.desc}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-[10px] uppercase tracking-widest text-[var(--color-text-muted)] font-semibold mb-2.5">
-              Protocol
-            </p>
-            <div className="grid grid-cols-2 gap-1.5">
-              {(['http', 'socks5'] as const).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setProtocol(p)}
-                  className={`rounded-lg border py-2 text-xs font-medium transition ${
-                    protocol === p
-                      ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-primary)]'
-                      : 'border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg)]'
-                  }`}
-                >
-                  {p.toUpperCase()}
-                  <span className="block text-[9px] opacity-70">
-                    :{p === 'http' ? '7000' : '7001'}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="text-[10px] uppercase tracking-widest text-[var(--color-text-muted)] font-semibold mb-2.5">
-              Rotation Mode
-            </p>
-            <select
-              value={rotation}
-              onChange={(e) => setRotation(e.target.value)}
-              className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
-            >
-              {ROTATION_OPTIONS.map((r) => (
-                <option key={r.value} value={r.value}>{r.label} — {r.desc}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <p className="text-[10px] uppercase tracking-widest text-[var(--color-text-muted)] font-semibold mb-2.5">
-              Sessions
-            </p>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <label className="block text-[10px] text-[var(--color-text-muted)] mb-1">Prefix</label>
-                <div className="flex gap-1">
-                  <input
-                    type="text"
-                    value={sessionPrefix}
-                    onChange={(e) => setSessionPrefix(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ''))}
-                    placeholder="s"
-                    className="flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2.5 py-1.5 text-xs font-mono text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
-                  />
-                  <button
-                    onClick={() => setSessionPrefix(randomHex(4))}
-                    className="rounded-lg border border-[var(--color-border)] px-2 text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition"
-                    title="Randomize prefix"
-                  >
-                    ⟳
-                  </button>
-                </div>
-              </div>
-              <div className="w-20">
-                <label className="block text-[10px] text-[var(--color-text-muted)] mb-1">Count</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={sessionCount}
-                  onChange={(e) => setSessionCount(Math.max(1, Math.min(100, Number(e.target.value))))}
-                  className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-2.5 py-1.5 text-xs text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
+                className="mt-2.5 h-2 overflow-hidden rounded-full bg-[var(--color-bg)]"
+                role="progressbar"
+                aria-label="Traffic used"
+                aria-valuenow={Math.round(usagePct)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <div
+                  className={`h-full rounded-full transition-all ${usagePct > 90 ? 'bg-red-500' : usagePct > 70 ? 'bg-amber-500' : 'bg-[var(--color-primary)]'}`}
+                  style={{ width: `${usagePct}%` }}
                 />
               </div>
+            )}
+            <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+              {keyData.expiresAt
+                ? `Valid until ${new Date(keyData.expiresAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}${daysLeft != null && daysLeft > 0 ? ` · ${daysLeft} day${daysLeft === 1 ? '' : 's'} left` : ''} · top-ups add traffic and extend it`
+                : 'No expiry'}
+            </p>
+          </div>
+
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Link
+              href="/dashboard/purchase"
+              className="rounded-xl bg-[var(--color-primary)] px-3.5 py-2 text-xs font-semibold text-white transition hover:opacity-90"
+            >
+              Add traffic
+            </Link>
+            {(status === 'active' || status === 'paused') && (
+              <button
+                type="button"
+                onClick={() => keyAction('toggle_enabled')}
+                disabled={!!busy}
+                className="rounded-xl border border-[var(--color-border)] px-3.5 py-2 text-xs font-medium text-[var(--color-text)] transition hover:bg-[var(--color-surface-hover)] disabled:opacity-40"
+              >
+                {busy === 'toggle_enabled' ? 'Working…' : keyData.enabled ? 'Pause key' : 'Resume key'}
+              </button>
+            )}
+            {!confirmRotate ? (
+              <button
+                type="button"
+                onClick={() => setConfirmRotate(true)}
+                disabled={!!busy}
+                className="rounded-xl border border-[var(--color-border)] px-3.5 py-2 text-xs font-medium text-[var(--color-text)] transition hover:bg-[var(--color-surface-hover)] disabled:opacity-40"
+              >
+                New password
+              </button>
+            ) : (
+              <div className="flex w-full flex-wrap items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5">
+                <span className="flex-1 text-xs text-amber-700 dark:text-amber-400">
+                  Issues a new password and disconnects everything using the old one. Only do this if it leaked.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => keyAction('regenerate')}
+                  disabled={!!busy}
+                  className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+                >
+                  {busy === 'regenerate' ? 'Working…' : 'Confirm'}
+                </button>
+                <button type="button" onClick={() => setConfirmRotate(false)} className="text-xs text-[var(--color-text-muted)]">
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <Card className="p-5 lg:col-span-3">
+          <h2 className="text-sm font-semibold text-[var(--color-text)]">Connection details</h2>
+          <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+            One gateway for everything. Country, network and rotation are chosen by the username — build it below.
+          </p>
+          <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+            <Field label="Host" value={GATEWAY_HOST} />
+            <Field label="Ports" value={`${HTTP_PORT} (HTTP) · ${SOCKS5_PORT} (SOCKS5)`} />
+            <div className="sm:col-span-2">
+              <Field label="Password (your key)" value={keyData.key} secret />
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Builder */}
+      <div className="grid gap-4 xl:grid-cols-5">
+        <Card className="p-5 xl:col-span-2 space-y-6">
+          <div>
+            <StepLabel n={1}>Network</StepLabel>
+            <Segmented<Network>
+              value={network}
+              onChange={setNetwork}
+              options={[
+                { value: 'mobile', label: 'Mobile', hint: 'Real 4G/5G carrier IPs' },
+                { value: 'residential', label: 'Residential', hint: 'Home broadband IPs' },
+              ]}
+            />
+          </div>
+
+          <div>
+            <StepLabel n={2}>Country</StepLabel>
+            <input
+              type="search"
+              value={countrySearch}
+              onChange={(e) => setCountrySearch(e.target.value)}
+              placeholder={`Search ${offered.length} countries…`}
+              aria-label="Search countries"
+              className="mb-2 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]/60 focus:border-[var(--color-primary)] focus:outline-none"
+            />
+            <div className="max-h-64 overflow-y-auto rounded-xl border border-[var(--color-border)] divide-y divide-[var(--color-border)]">
+              {visibleCountries.map((c) => (
+                <button
+                  key={c.code}
+                  type="button"
+                  onClick={() => setCountry(c.code)}
+                  aria-pressed={country === c.code}
+                  className={`flex w-full items-center gap-3 px-3 py-2 text-left transition ${
+                    country === c.code ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]' : 'text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]'
+                  }`}
+                >
+                  <span className="text-lg leading-none" aria-hidden>{flag(c.code)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium">{countryName(c.code)}</span>
+                    {network === 'mobile' && c.carriers.length > 0 && (
+                      <span className="block truncate text-[11px] text-[var(--color-text-muted)]">{c.carriers.slice(0, 3).join(' · ')}</span>
+                    )}
+                  </span>
+                  {c.count != null && (
+                    <span className="shrink-0 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                      {c.count} online
+                    </span>
+                  )}
+                </button>
+              ))}
+              {visibleCountries.length === 0 && (
+                <p className="px-3 py-6 text-center text-xs text-[var(--color-text-muted)]">No country matches “{countrySearch}”.</p>
+              )}
             </div>
           </div>
 
-          <div className="pt-1">
-            <p className="text-[10px] uppercase tracking-widest text-[var(--color-text-muted)] font-semibold mb-2.5">
-              Included Features
-            </p>
-            <ul className="space-y-1.5">
-              {INCLUDED_FEATURES.map((f) => (
-                <li key={f} className="flex items-start gap-2 text-xs text-[var(--color-text)]">
-                  <svg className="h-3.5 w-3.5 mt-0.5 text-[var(--color-accent)] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                  {f}
-                </li>
+          <div>
+            <StepLabel n={3}>IP rotation</StepLabel>
+            <div className="grid gap-1.5">
+              {ROTATIONS.map((r) => (
+                <label
+                  key={r.value}
+                  className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 transition ${
+                    rotation === r.value ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5' : 'border-[var(--color-border)] hover:bg-[var(--color-surface-hover)]'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="rotation"
+                    value={r.value}
+                    checked={rotation === r.value}
+                    onChange={() => setRotation(r.value)}
+                    className="mt-0.5 accent-[var(--color-primary)]"
+                  />
+                  <span>
+                    <span className="block text-sm font-medium text-[var(--color-text)]">{r.label}</span>
+                    <span className="block text-[11px] text-[var(--color-text-muted)]">{r.description}</span>
+                  </span>
+                </label>
               ))}
-            </ul>
-          </div>
-        </div>
-
-        {/* COLUMN 3 — ORDER SUMMARY (dark card) */}
-        <div className="lg:col-span-3 rounded-xl bg-[#0c0c14] border border-white/[0.06] p-5 flex flex-col text-white">
-          <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-3">
-            Proxy Summary
-          </p>
-
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-2xl leading-none">{selectedCountryMeta.flag}</span>
-            <span className="text-base font-semibold">{selectedCountryMeta.name}</span>
-          </div>
-          <p className="text-[11px] text-gray-500">
-            {pool === 'mbl' ? 'Mobile' : 'Residential'} · {protocol.toUpperCase()} · {ROTATION_OPTIONS.find((r) => r.value === rotation)?.label}
-          </p>
-
-          <div className="mt-4 rounded-lg bg-black/30 border border-white/[0.04] p-3">
-            <p className="text-[10px] text-gray-500 mb-1.5">Live URL preview</p>
-            <code className="text-[10px] leading-relaxed text-[var(--color-primary)]/90 break-all block font-mono">
-              {previewUrl || '—'}
-            </code>
+            </div>
           </div>
 
-          <button
-            onClick={generateUrls}
-            disabled={!isActive || !proxyUsername}
-            className="mt-4 w-full rounded-lg bg-[var(--color-surface)] py-3 text-sm font-semibold text-[#0c0c14] hover:bg-gray-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Generate {sessionCount > 1 ? `${sessionCount} URLs` : 'URL'}
-          </button>
-
-          <p className="mt-2 text-[10px] text-center text-gray-500">
-            No commitment — change settings anytime
-          </p>
-
-          {/* Money-back style badge */}
-          <div className="mt-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 flex items-center gap-2">
-            <svg className="h-3.5 w-3.5 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.6-1.5a9 9 0 11-17.2 0L12 3l8.6 5.5z" />
-            </svg>
-            <span className="text-[11px] font-medium text-emerald-400">Real device-only IPs</span>
+          <div>
+            <StepLabel n={4}>Protocol</StepLabel>
+            <Segmented<Protocol>
+              value={protocol}
+              onChange={setProtocol}
+              options={[
+                { value: 'http', label: 'HTTP(S)', hint: `Port ${HTTP_PORT}` },
+                { value: 'socks5', label: 'SOCKS5', hint: `Port ${SOCKS5_PORT}` },
+              ]}
+            />
           </div>
+        </Card>
 
-          <div className="mt-5 pt-5 border-t border-white/[0.06]">
-            <p className="text-[10px] uppercase tracking-widest text-gray-500 font-semibold mb-3">
-              Perfect For
+        <div className="space-y-4 xl:col-span-3">
+          <Card className="p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold text-[var(--color-text)]">
+                  {flag(country)} {countryName(country)} · {network === 'mobile' ? 'Mobile' : 'Residential'} · {rotationMeta.label}
+                </h2>
+                <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">
+                  {usable
+                    ? 'Ready to use — copy and paste into your tool.'
+                    : 'Your key is not active, so these proxies will not connect until you top up or resume it.'}
+                </p>
+              </div>
+              {rotationMeta.needsSession && (
+                <button
+                  type="button"
+                  onClick={() => setSeed((s) => s + 1)}
+                  className="rounded-lg border border-[var(--color-border)] px-2.5 py-1 text-xs font-medium text-[var(--color-text)] transition hover:bg-[var(--color-surface-hover)]"
+                  title="Start new sessions on different devices"
+                >
+                  ↻ New session{effectiveQuantity > 1 ? 's' : ''}
+                </button>
+              )}
+            </div>
+
+            {first ? (
+              <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
+                <Field label="Host" value={first.host} />
+                <Field label="Port" value={String(first.port)} />
+                <div className="sm:col-span-2"><Field label="Username" value={first.username} /></div>
+                <div className="sm:col-span-2"><Field label="Password" value={first.password} secret /></div>
+                <div className="sm:col-span-2">
+                  <Field label={`Full proxy (${OUTPUT_FORMATS.find((f) => f.value === format)?.label})`} value={formatCredentials(first, format)} />
+                </div>
+              </div>
+            ) : (
+              <p className="mt-4 text-sm text-[var(--color-text-muted)]">Proxy details are unavailable — refresh the page or contact support.</p>
+            )}
+          </Card>
+
+          <Card className="p-5">
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label htmlFor="qty" className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Quantity</label>
+                <input
+                  id="qty"
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={quantity}
+                  disabled={!rotationMeta.needsSession}
+                  onChange={(e) => setQuantity(Math.max(1, Math.min(500, Number(e.target.value) || 1)))}
+                  className="w-24 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none disabled:opacity-50"
+                />
+              </div>
+              <div>
+                <label htmlFor="prefix" className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Session prefix</label>
+                <input
+                  id="prefix"
+                  type="text"
+                  value={prefix}
+                  disabled={!rotationMeta.needsSession}
+                  onChange={(e) => setPrefix(sanitizeSessionPrefix(e.target.value))}
+                  placeholder="optional, e.g. shop1"
+                  className="w-40 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 font-mono text-sm text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none disabled:opacity-50"
+                />
+              </div>
+              <div className="min-w-[12rem] flex-1">
+                <label htmlFor="format" className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Format</label>
+                <select
+                  id="format"
+                  value={format}
+                  onChange={(e) => setFormat(e.target.value as OutputFormat)}
+                  className="w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none"
+                >
+                  {OUTPUT_FORMATS.map((f) => (
+                    <option key={f.value} value={f.value}>{f.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <p className="mt-2 text-[11px] text-[var(--color-text-muted)]">
+              {rotationMeta.needsSession
+                ? 'Each line is its own session on its own device — run them in parallel.'
+                : 'In this mode every connection already gets a fresh device, so one line is all you need.'}
             </p>
-            <ul className="space-y-2">
-              {USE_CASES.map((u) => (
-                <li key={u} className="flex items-start gap-2 text-xs text-gray-300">
-                  <svg className="h-3.5 w-3.5 mt-0.5 text-[var(--color-primary)] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                  {u}
-                </li>
-              ))}
-            </ul>
-          </div>
+
+            <div className="mt-3 max-h-60 overflow-auto rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-3">
+              <pre className="whitespace-pre font-mono text-[12px] leading-relaxed text-[var(--color-text)]">{lines.join('\n')}</pre>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <CopyButton text={lines.join('\n')} label={lines.length > 1 ? `Copy all ${lines.length}` : 'Copy'} className="px-3.5 py-2" />
+              <button
+                type="button"
+                onClick={() => downloadText(`proxies-${country}-${network}-${rotation}.txt`, lines.join('\n'))}
+                disabled={lines.length === 0}
+                className="rounded-lg border border-[var(--color-border)] px-3.5 py-2 text-xs font-medium text-[var(--color-text)] transition hover:bg-[var(--color-surface-hover)] disabled:opacity-40"
+              >
+                Download .txt
+              </button>
+            </div>
+          </Card>
+
+          {activeSnippet && (
+            <Card className="p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold text-[var(--color-text)]">Test it in 10 seconds</h2>
+                <div className="flex gap-1 rounded-lg bg-[var(--color-bg)] p-1">
+                  {snippets.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setSnippet(s.id)}
+                      className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                        activeSnippet.id === s.id ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm' : 'text-[var(--color-text-muted)]'
+                      }`}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="mt-3 overflow-x-auto rounded-xl bg-[#0c0c14] p-4">
+                <pre className="font-mono text-[12px] leading-relaxed text-gray-100">{activeSnippet.code}</pre>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-[11px] text-[var(--color-text-muted)]">Prints the IP your traffic exits from.</p>
+                <CopyButton text={activeSnippet.code} />
+              </div>
+            </Card>
+          )}
         </div>
       </div>
 
-      {/* Generated URLs */}
-      {generatedUrls.length > 0 && (
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
-          <div className="flex items-center justify-between mb-3">
+      {/* Live sessions */}
+      <Card className="p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
             <h2 className="text-sm font-semibold text-[var(--color-text)]">
-              Generated Proxies ({generatedUrls.length})
+              Live sessions
+              {sessions && sessions.length > 0 && (
+                <span className="ml-2 rounded-full bg-[var(--color-primary)]/10 px-2 py-0.5 text-[11px] text-[var(--color-primary)]">{sessions.length}</span>
+              )}
             </h2>
-            <div className="flex gap-2">
-              <CopyButton text={generatedUrls.join('\n')} label="Copy All" />
-              <button
-                onClick={() => setGeneratedUrls([])}
-                className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition"
-              >
-                Clear
-              </button>
-            </div>
+            <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">Sessions currently open with your key. Updates every 30 seconds.</p>
           </div>
-          <div className="space-y-1.5 max-h-80 overflow-y-auto">
-            {generatedUrls.map((url, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] px-3 py-2"
-              >
-                <code className="flex-1 text-xs text-[var(--color-text)] break-all select-all">{url}</code>
-                <CopyButton text={url} label="Copy" />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Active Sessions */}
-      {sessions.length > 0 && (
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-[var(--color-text)]">Active Sessions</h2>
-              <span className="inline-block rounded-full bg-[var(--color-primary)]/10 px-2 py-0.5 text-[10px] font-medium text-[var(--color-primary)]">
-                {sessions.length}
-              </span>
-            </div>
+          {sessions && sessions.length > 0 && (
             <button
-              onClick={() => { setSessions([]); saveSessions([]); }}
-              className="text-xs text-[var(--color-text-muted)] hover:text-red-500 transition"
+              type="button"
+              onClick={() => closeSessions()}
+              disabled={!!busy}
+              className="rounded-lg border border-red-500/30 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-500/10 disabled:opacity-40 dark:text-red-400"
             >
-              Clear All
+              {busy === 'close_all' ? 'Closing…' : 'Close all'}
             </button>
-          </div>
-          <div className="space-y-2 max-h-72 overflow-y-auto">
-            {sessions.map((s) => {
-              const meta = COUNTRY_META[s.country] ?? { name: s.country.toUpperCase(), flag: '' };
-              return (
-                <div
-                  key={s.sid}
-                  className="flex items-center gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2.5"
-                >
-                  <span className="text-base leading-none">{meta.flag}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="text-xs font-mono font-medium text-[var(--color-text)] truncate">
-                        {s.sid}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      <span className="inline-block rounded bg-[var(--color-primary)]/10 px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-primary)]">
-                        {s.pool.toUpperCase()}
-                      </span>
-                      <span className="inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600">
-                        {s.country.toUpperCase()}
-                      </span>
-                      <span className="inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600">
-                        {s.protocol.toUpperCase()}
-                      </span>
-                      {s.rotation !== 'none' && (
-                        <span className="inline-block rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-600">
-                          rot:{s.rotation}
-                        </span>
-                      )}
-                      <span className="text-[10px] text-[var(--color-text-muted)]">
-                        {timeAgo(s.createdAt)}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex gap-1.5 shrink-0">
-                    <CopyButton text={s.url} label="Copy" />
-                    <button
-                      onClick={() => {
-                        const updated = sessions.filter((x) => x.sid !== s.sid);
-                        setSessions(updated);
-                        saveSessions(updated);
-                      }}
-                      className="text-xs text-[var(--color-text-muted)] hover:text-red-500 transition"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          )}
         </div>
-      )}
 
-      {/* Connection Reference (collapsible) */}
-      {showReference && (
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 space-y-4 text-xs text-[var(--color-text)]">
-          <h2 className="text-sm font-semibold text-[var(--color-text)]">Connection Format Reference</h2>
+        {sessionsError && <p className="mt-3 text-xs text-red-600 dark:text-red-400">{sessionsError}</p>}
 
-          <div>
-            <p className="font-medium mb-1.5">URL Structure</p>
-            <code className="block rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] p-3 text-[var(--color-primary)] break-all">
-              {'{protocol}://{username}-{pool}-{country}[-sid-{id}][-rot-{mode}]:{pak_key}@gw.proxies.sx:{port}'}
-            </code>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <p className="font-medium mb-1.5">Pools</p>
-              <table className="w-full text-xs">
-                <tbody className="divide-y divide-[var(--color-border)]">
-                  <tr><td className="py-1 font-mono text-[var(--color-primary)]">mbl</td><td className="py-1 text-[var(--color-text-muted)]">Mobile 4G/5G modems</td></tr>
-                  <tr><td className="py-1 font-mono text-[var(--color-primary)]">peer</td><td className="py-1 text-[var(--color-text-muted)]">Residential Android peers</td></tr>
-                </tbody>
-              </table>
-            </div>
-
-            <div>
-              <p className="font-medium mb-1.5">Ports</p>
-              <table className="w-full text-xs">
-                <tbody className="divide-y divide-[var(--color-border)]">
-                  <tr><td className="py-1 font-mono text-[var(--color-primary)]">7000</td><td className="py-1 text-[var(--color-text-muted)]">HTTP/HTTPS proxy</td></tr>
-                  <tr><td className="py-1 font-mono text-[var(--color-primary)]">7001</td><td className="py-1 text-[var(--color-text-muted)]">SOCKS5 proxy</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div>
-            <p className="font-medium mb-1.5">Rotation Modes (-rot-)</p>
-            <table className="w-full text-xs">
+        {sessions === null && !sessionsError && <p className="mt-4 text-sm text-[var(--color-text-muted)]">Loading…</p>}
+        {sessions && sessions.length === 0 && (
+          <p className="mt-4 rounded-xl border border-dashed border-[var(--color-border)] px-4 py-6 text-center text-sm text-[var(--color-text-muted)]">
+            No open sessions. Use one of your proxies above and it will show up here.
+          </p>
+        )}
+        {sessions && sessions.length > 0 && (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wider text-[var(--color-text-muted)]">
+                  <th className="pb-2 font-semibold">Session</th>
+                  <th className="pb-2 font-semibold">Location</th>
+                  <th className="pb-2 font-semibold">Rotation</th>
+                  <th className="pb-2 text-right font-semibold">Requests</th>
+                  <th className="pb-2 text-right font-semibold">Traffic</th>
+                  <th className="pb-2 text-right font-semibold">Last active</th>
+                  <th className="pb-2"><span className="sr-only">Actions</span></th>
+                </tr>
+              </thead>
               <tbody className="divide-y divide-[var(--color-border)]">
-                <tr><td className="py-1 font-mono text-[var(--color-primary)] w-20">sticky</td><td className="py-1 text-[var(--color-text-muted)]">Hold one device for the session. Use with -sid- to keep the same device across reconnects (IP as stable as the carrier allows).</td></tr>
-                <tr><td className="py-1 font-mono text-[var(--color-primary)]">auto10</td><td className="py-1 text-[var(--color-text-muted)]">Auto-rotate roughly every 10 minutes. Good for long scrapers.</td></tr>
-                <tr><td className="py-1 font-mono text-[var(--color-primary)]">auto30</td><td className="py-1 text-[var(--color-text-muted)]">Auto-rotate on a longer interval.</td></tr>
-                <tr><td className="py-1 font-mono text-[var(--color-primary)]">hard</td><td className="py-1 text-[var(--color-text-muted)]">Strict device pin (like sticky).</td></tr>
-                <tr><td className="py-1 font-mono text-[var(--color-primary)]">none</td><td className="py-1 text-[var(--color-text-muted)]">Default gateway behavior.</td></tr>
+                {sessions.map((s) => (
+                  <tr key={s.sessionKey} className="text-[var(--color-text)]">
+                    <td className="py-2.5 font-mono text-xs">{s.sessionId}</td>
+                    <td className="py-2.5 text-xs">
+                      {flag(s.country)} {s.country.toUpperCase()}
+                      {s.carrier && <span className="text-[var(--color-text-muted)]"> · {s.carrier}</span>}
+                    </td>
+                    <td className="py-2.5 text-xs">{ROTATIONS.find((r) => r.value === s.rotation)?.label ?? s.rotation}</td>
+                    <td className="py-2.5 text-right text-xs tabular-nums">{s.requestCount.toLocaleString()}</td>
+                    <td className="py-2.5 text-right text-xs tabular-nums">{formatBytes(s.bytesIn + s.bytesOut)}</td>
+                    <td className="py-2.5 text-right text-xs text-[var(--color-text-muted)]">{timeAgo(s.lastActivityAt)}</td>
+                    <td className="py-2.5 text-right">
+                      <button
+                        type="button"
+                        onClick={() => closeSessions(s.sessionKey)}
+                        disabled={!!busy}
+                        className="text-xs text-[var(--color-text-muted)] hover:text-red-500 disabled:opacity-40"
+                      >
+                        {busy === s.sessionKey ? '…' : 'Close'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
+        )}
+      </Card>
 
-          <div>
-            <p className="font-medium mb-1.5">Quick Examples</p>
-            <div className="space-y-1.5">
-              <code className="block rounded bg-[var(--color-bg)] p-2 text-[10px] break-all text-[var(--color-text-muted)]">
-                http://user-mbl-us-sid-abc123-rot-sticky:pak_xxx@gw.proxies.sx:7000
-                <span className="block text-[var(--color-text-muted)]/60 mt-0.5">Sticky US mobile session &quot;abc123&quot;</span>
-              </code>
-              <code className="block rounded bg-[var(--color-bg)] p-2 text-[10px] break-all text-[var(--color-text-muted)]">
-                socks5://user-peer-de-rot-hard:pak_xxx@gw.proxies.sx:7001
-                <span className="block text-[var(--color-text-muted)]/60 mt-0.5">SOCKS5, German community pool, strict device pin</span>
-              </code>
-              <code className="block rounded bg-[var(--color-bg)] p-2 text-[10px] break-all text-[var(--color-text-muted)]">
-                http://user-mbl-pl-rot-auto10:pak_xxx@gw.proxies.sx:7000
-                <span className="block text-[var(--color-text-muted)]/60 mt-0.5">Polish mobile, auto-rotate every 10 min</span>
-              </code>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Good to know */}
+      <Card className="p-5">
+        <h2 className="text-sm font-semibold text-[var(--color-text)]">Good to know</h2>
+        <ul className="mt-3 grid gap-3 text-xs leading-relaxed text-[var(--color-text-muted)] md:grid-cols-2">
+          <li>
+            <strong className="text-[var(--color-text)]">Sticky keeps the device, not always the IP.</strong> Mobile carriers
+            re-assign IPs on their own schedule, so a sticky session can occasionally show a new address on the same phone. For the
+            steadiest single IP, use Residential + Sticky.
+          </li>
+          <li>
+            <strong className="text-[var(--color-text)]">Idle sessions end after 1 hour.</strong> Keep using the same line and it
+            stays on its device; after a long pause it picks a new one. Click “New session” anytime for fresh devices.
+          </li>
+          <li>
+            <strong className="text-[var(--color-text)]">Only traffic is billed.</strong> Open as many sessions and parallel
+            connections as you need — you pay per GB, nothing else.
+          </li>
+          <li>
+            <strong className="text-[var(--color-text)]">Keep your password private.</strong> Anyone with it can use your traffic.
+            If it leaks, click “New password” — the old one stops working within about 30 seconds.
+          </li>
+        </ul>
+      </Card>
     </div>
-  );
-}
-
-function copyText(text: string): boolean {
-  if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(text).catch(() => {});
-    return true;
-  }
-  const ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.position = 'fixed';
-  ta.style.left = '-9999px';
-  document.body.appendChild(ta);
-  ta.select();
-  let ok = false;
-  try { ok = document.execCommand('copy'); } catch { /* ignore */ }
-  document.body.removeChild(ta);
-  return ok;
-}
-
-function CopyButton({ text, label }: { text: string; label: string }) {
-  const [copied, setCopied] = useState(false);
-
-  function copy() {
-    copyText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  return (
-    <button
-      onClick={copy}
-      className="text-xs text-[var(--color-primary)] hover:underline transition whitespace-nowrap"
-    >
-      {copied ? 'Copied!' : label}
-    </button>
   );
 }

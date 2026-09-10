@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { proxies } from '@/lib/proxies';
+import { proxies, getProxyUsername, describeProxiesError, isNotFound } from '@/lib/proxies';
 import { queryOne, query } from '@/lib/db';
 
 interface Customer {
@@ -27,6 +27,19 @@ export async function GET() {
     return NextResponse.json({ key: null });
   }
 
+  let proxyUsername: string;
+  try {
+    proxyUsername = getProxyUsername();
+  } catch (err) {
+    // Misconfigured server: refuse rather than hand out credentials that can
+    // never authenticate at the gateway.
+    console.error('[pool/keys]', err instanceof Error ? err.message : err);
+    return NextResponse.json(
+      { key: null, error: 'Proxy service is not configured yet — please contact support.' },
+      { status: 503 },
+    );
+  }
+
   try {
     const keyData = await proxies().poolKeys.get(customer.pak_key_id);
 
@@ -39,21 +52,21 @@ export async function GET() {
       ).catch(() => {});
     }
 
-    return NextResponse.json({
-      key: keyData,
-      proxyUsername: process.env.PROXIES_SX_USERNAME ?? '',
-    });
+    return NextResponse.json({ key: keyData, proxyUsername });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    const status = (err as { status?: number }).status;
     console.error(`[pool/keys] Failed to fetch key ${customer.pak_key_id}:`, {
-      error: message,
-      status,
+      error: describeProxiesError(err),
       userId: session.user.id,
       customerId: customer.id,
     });
+    if (isNotFound(err)) {
+      return NextResponse.json({
+        key: null,
+        error: 'Your proxy key is no longer active. Buy traffic to get a fresh key, or contact support.',
+      });
+    }
     return NextResponse.json(
-      { key: null, error: 'Failed to fetch key from provider' },
+      { key: null, error: 'Could not reach the proxy network — please retry in a moment.' },
       { status: 502 },
     );
   }
@@ -86,6 +99,8 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'No active proxy key' }, { status: 404 });
   }
 
+  // Customers can pause/resume and rotate their secret. Deleting a key is
+  // deliberately NOT exposed: it destroys paid, unused traffic irreversibly.
   try {
     switch (action) {
       case 'toggle_enabled': {
@@ -93,6 +108,11 @@ export async function PATCH(request: Request) {
         const updated = await proxies().poolKeys.update(customer.pak_key_id, {
           enabled: !current.enabled,
         });
+        if (!updated.enabled) {
+          // Disabling only stops NEW connections (30 s auth cache); close live
+          // tunnels too so "Pause" actually pauses.
+          await proxies().sessions.closeAll({ pakId: customer.pak_key_id }).catch(() => {});
+        }
         await query(
           `INSERT INTO audit_log (actor_id, action, target_type, target_id, metadata)
            VALUES ($1, 'key_toggle', 'pool_key', $2, $3)`,
@@ -103,11 +123,14 @@ export async function PATCH(request: Request) {
 
       case 'regenerate': {
         const updated = await proxies().poolKeys.regenerate(customer.pak_key_id);
-        // Update stored pak_key in DB
         await query(
           'UPDATE customers SET pak_key = $1, updated_at = now() WHERE id = $2',
           [updated.key, customer.id],
         );
+        // The old secret keeps authenticating new connections for up to ~30 s
+        // and established tunnels are not torn down — close them so a leaked
+        // key actually stops working.
+        await proxies().sessions.closeAll({ pakId: customer.pak_key_id }).catch(() => {});
         await query(
           `INSERT INTO audit_log (actor_id, action, target_type, target_id)
            VALUES ($1, 'key_regenerated', 'pool_key', $2)`,
@@ -116,26 +139,11 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ key: updated });
       }
 
-      case 'delete': {
-        await proxies().poolKeys.delete(customer.pak_key_id);
-        await query(
-          'UPDATE customers SET pak_key_id = NULL, pak_key = NULL, traffic_cap_gb = 0, traffic_used_gb = 0, plan_id = NULL, expires_at = NULL, updated_at = now() WHERE id = $1',
-          [customer.id],
-        );
-        await query(
-          `INSERT INTO audit_log (actor_id, action, target_type, target_id)
-           VALUES ($1, 'key_deleted', 'pool_key', $2)`,
-          [session.user.id, customer.pak_key_id],
-        );
-        return NextResponse.json({ key: null, deleted: true });
-      }
-
       default:
         return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
     }
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`[pool/keys] Action ${action} failed:`, message);
-    return NextResponse.json({ error: `Action failed: ${message}` }, { status: 502 });
+    console.error(`[pool/keys] Action ${action} failed:`, describeProxiesError(err));
+    return NextResponse.json({ error: 'Action failed — please retry in a moment.' }, { status: 502 });
   }
 }

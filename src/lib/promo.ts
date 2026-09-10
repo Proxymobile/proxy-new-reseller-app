@@ -121,12 +121,15 @@ export async function redeemPromoCode(
     return { ok: false, error: 'This promo code has been fully redeemed' };
   }
 
+  let redemptionId: string;
   try {
-    await query(
+    const row = await queryOne<{ id: string }>(
       `INSERT INTO promo_redemptions (promo_id, user_id, ip_address, credited_usd)
-       VALUES ($1, $2, $3, $4)`,
+       VALUES ($1, $2, $3, $4)
+       RETURNING id`,
       [promo.id, userId, ip, credit],
     );
+    redemptionId = row!.id;
   } catch {
     // Unique violation (double-submit race) — release the claimed slot
     await query(
@@ -139,7 +142,9 @@ export async function redeemPromoCode(
   if (grantGb && grantGb > 0) {
     // Trial: provision real proxy traffic instead of USD credit.
     try {
-      await provisionTraffic(userId, grantGb, TRIAL_DURATION_DAYS);
+      // Keyed on the redemption row: a failed attempt deletes its row, so a
+      // retry gets a fresh key rather than the platform's cached failure.
+      await provisionTraffic(userId, grantGb, TRIAL_DURATION_DAYS, `promo:${redemptionId}`);
     } catch (err) {
       // Provider failed — roll back the redemption so the user can retry.
       await query('DELETE FROM promo_redemptions WHERE promo_id = $1 AND user_id = $2', [promo.id, userId]);
