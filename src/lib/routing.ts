@@ -14,8 +14,23 @@ export const GATEWAY_HOST = 'gw.proxies.sx';
 export const HTTP_PORT = 7000;
 export const SOCKS5_PORT = 7001;
 
-/** What the customer buys: real carrier IPs, or home-ISP residential IPs. */
-export type Network = 'mobile' | 'residential';
+/**
+ * What the customer picks:
+ * - mobile:      any real 4G/5G carrier IP — dedicated modems + phones on a carrier
+ * - modem:       dedicated carrier modems only (smaller, most stable; few countries)
+ * - residential: home-broadband IPs
+ */
+export type Network = 'mobile' | 'modem' | 'residential';
+
+export const NETWORKS: { value: Network; label: string; hint: string }[] = [
+  { value: 'mobile', label: 'Mobile', hint: 'Real 4G/5G carrier IPs' },
+  { value: 'modem', label: 'Dedicated modem', hint: 'Most stable, fewer countries' },
+  { value: 'residential', label: 'Residential', hint: 'Home broadband IPs' },
+];
+
+export function isNetwork(value: unknown): value is Network {
+  return value === 'mobile' || value === 'modem' || value === 'residential';
+}
 export type Protocol = 'http' | 'socks5';
 
 export interface RotationOption {
@@ -81,24 +96,35 @@ export function isRotation(value: unknown): value is RotationMode {
 /**
  * Map a product choice to pool + IP-class tokens.
  *
- * Mobile: countries with carrier-modem stock use the dedicated `mbl` tier
- * (ultra-stable, monitored). Everywhere else we use the peer network filtered
- * to `iptype-mobile` — a HARD filter, so the customer never silently gets a
- * residential IP when they paid for mobile.
- *
- * Residential: peer network filtered to `iptype-residential`.
+ * `iptype` is a HARD filter at the gateway (no match → 502, never a silent
+ * substitute), so a customer who picked Mobile can never be handed a
+ * residential or datacenter IP. Pool `any` lets the selector pick the
+ * healthiest device across modems and phones; modems count as `mobile`.
  */
-export function routeFor(
+export function routeFor(network: Network): Pick<BuildProxyUrlOpts, 'pool' | 'ipType'> {
+  switch (network) {
+    case 'modem':
+      return { pool: 'mbl' };
+    case 'residential':
+      return { pool: 'peer', ipType: 'residential' };
+    default:
+      return { pool: 'any', ipType: 'mobile' };
+  }
+}
+
+/** Live device count for a network in one country (see `@/lib/inventory`). */
+export function stockFor(
   network: Network,
-  hasModemStock: boolean,
-): Pick<BuildProxyUrlOpts, 'pool' | 'ipType'> {
-  if (network === 'residential') {
-    return { pool: 'peer', ipType: 'residential' };
+  c: { mobile: number; modem: number; residential: number },
+): number {
+  switch (network) {
+    case 'modem':
+      return c.modem;
+    case 'residential':
+      return c.residential;
+    default:
+      return c.mobile;
   }
-  if (hasModemStock) {
-    return { pool: 'mbl' };
-  }
-  return { pool: 'peer', ipType: 'mobile' };
 }
 
 /**
@@ -131,7 +157,6 @@ export interface ProxyRequest {
   pakKey: string;
   network: Network;
   country: string;
-  hasModemStock: boolean;
   rotation: RotationMode;
   protocol: Protocol;
   /** Session id; only emitted for modes that need one. */
@@ -151,7 +176,7 @@ export interface ProxyCredentials {
 export function buildCredentials(req: ProxyRequest): ProxyCredentials {
   const option = rotationOption(req.rotation);
   const url = buildProxyUrl(req.proxyUsername, req.pakKey, {
-    ...routeFor(req.network, req.hasModemStock),
+    ...routeFor(req.network),
     country: req.country,
     rotation: req.rotation,
     sid: option.needsSession ? req.sid : undefined,

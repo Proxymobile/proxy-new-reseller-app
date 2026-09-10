@@ -6,6 +6,7 @@ import {
   GATEWAY_HOST,
   HTTP_PORT,
   SOCKS5_PORT,
+  NETWORKS,
   OUTPUT_FORMATS,
   ROTATIONS,
   buildCredentials,
@@ -14,6 +15,7 @@ import {
   newSessionId,
   rotationOption,
   sanitizeSessionPrefix,
+  stockFor,
   type Network,
   type OutputFormat,
   type Protocol,
@@ -62,8 +64,8 @@ type KeyStatus = 'active' | 'paused' | 'exhausted' | 'expired';
 // Shown only if live inventory can't be loaded — countries with a long record
 // of real mobile stock, so the builder still works during an upstream blip.
 // The first six have dedicated carrier modems.
-const FALLBACK_MOBILE = ['us', 'gb', 'fr', 'nl', 'pl', 'ge', 'de', 'es', 'it'];
-const FALLBACK_MODEM = new Set(['us', 'gb', 'fr', 'nl', 'pl', 'ge']);
+const FALLBACK_MOBILE = ['us', 'gb', 'fr', 'de', 'es', 'it', 'nl', 'pl', 'br', 'mx'];
+const FALLBACK_MODEM = ['us', 'gb', 'fr', 'nl', 'pl', 'ge'];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -318,18 +320,16 @@ export default function KeysPage() {
   // Countries offered for the selected network, most stock first.
   const offered = useMemo(() => {
     if (!countries) {
-      return FALLBACK_MOBILE.map((code) => ({
+      return (network === 'modem' ? FALLBACK_MODEM : FALLBACK_MOBILE).map((code) => ({
         code,
         count: null as number | null,
-        modem: FALLBACK_MODEM.has(code) ? 1 : 0,
         carriers: [] as string[],
       }));
     }
     return countries
       .map((c) => ({
         code: c.code,
-        count: network === 'mobile' ? c.mobile : c.residential,
-        modem: c.modem,
+        count: stockFor(network, c) as number | null,
         carriers: c.carriers,
       }))
       .filter((c) => (c.count ?? 0) > 0)
@@ -349,7 +349,6 @@ export default function KeysPage() {
     return offered.filter((c) => c.code.includes(q) || countryName(c.code).toLowerCase().includes(q));
   }, [offered, countrySearch]);
 
-  const selectedModem = offered.find((c) => c.code === country)?.modem ?? 0;
   const rotationMeta = rotationOption(rotation);
   const effectiveQuantity = rotationMeta.needsSession ? quantity : 1;
 
@@ -361,14 +360,13 @@ export default function KeysPage() {
         pakKey: keyData.key,
         network,
         country,
-        hasModemStock: selectedModem > 0,
         rotation,
         protocol,
         sid: newSessionId(prefix || 's'),
       }),
     );
     // `seed` is a dependency on purpose: bumping it issues fresh session ids.
-  }, [keyData, proxyUsername, network, country, selectedModem, rotation, protocol, effectiveQuantity, prefix, seed]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [keyData, proxyUsername, network, country, rotation, protocol, effectiveQuantity, prefix, seed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const lines = credentials.map((c) => formatCredentials(c, format));
   const first = credentials[0];
@@ -655,11 +653,13 @@ export default function KeysPage() {
             <Segmented<Network>
               value={network}
               onChange={setNetwork}
-              options={[
-                { value: 'mobile', label: 'Mobile', hint: 'Real 4G/5G carrier IPs' },
-                { value: 'residential', label: 'Residential', hint: 'Home broadband IPs' },
-              ]}
+              options={NETWORKS}
             />
+            {network === 'modem' && (
+              <p className="mt-2 text-[11px] text-[var(--color-text-muted)]">
+                Our own carrier modems — the steadiest connections, in fewer countries. “Mobile” also includes them.
+              </p>
+            )}
           </div>
 
           <div>
@@ -748,7 +748,7 @@ export default function KeysPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 className="text-sm font-semibold text-[var(--color-text)]">
-                  {flag(country)} {countryName(country)} · {network === 'mobile' ? 'Mobile' : 'Residential'} · {rotationMeta.label}
+                  {flag(country)} {countryName(country)} · {NETWORKS.find((n) => n.value === network)?.label} · {rotationMeta.label}
                 </h2>
                 <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">
                   {usable

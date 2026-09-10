@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth';
 import { getProxyUsername } from '@/lib/proxies';
 import { getCountryInventory } from '@/lib/inventory';
 import { queryOne } from '@/lib/db';
-import { buildCredentials, isRotation, newSessionId, sanitizeSessionId, type Network } from '@/lib/routing';
+import { buildCredentials, isNetwork, isRotation, newSessionId, sanitizeSessionId, stockFor } from '@/lib/routing';
 
 interface Customer {
   pak_key: string | null;
@@ -13,7 +13,7 @@ interface Customer {
  * Server-side proxy credential builder (for API/scripted use; the dashboard
  * builds the same strings client-side via the shared `@/lib/routing`).
  *
- * Body: { country: "us", network?: "mobile"|"residential", rotation?: RotationMode,
+ * Body: { country: "us", network?: "mobile"|"modem"|"residential", rotation?: RotationMode,
  *         protocol?: "http"|"socks5", sessionId?: string }
  */
 export async function POST(request: Request) {
@@ -42,8 +42,8 @@ export async function POST(request: Request) {
   if (typeof country !== 'string' || !/^[a-z]{2}$/i.test(country)) {
     return NextResponse.json({ error: 'country must be a 2-letter ISO code' }, { status: 400 });
   }
-  if (network !== 'mobile' && network !== 'residential') {
-    return NextResponse.json({ error: 'network must be "mobile" or "residential"' }, { status: 400 });
+  if (!isNetwork(network)) {
+    return NextResponse.json({ error: 'network must be "mobile", "modem" or "residential"' }, { status: 400 });
   }
   if (!isRotation(rotation)) {
     return NextResponse.json({ error: 'Invalid rotation' }, { status: 400 });
@@ -59,8 +59,7 @@ export async function POST(request: Request) {
   const inv = await getCountryInventory(country);
   const cc = country.toLowerCase();
   if (inv) {
-    const available = network === 'mobile' ? inv.mobile : inv.residential;
-    if (available <= 0) {
+    if (stockFor(network, inv) <= 0) {
       return NextResponse.json(
         { error: `No ${network} IPs are online in "${cc.toUpperCase()}" right now` },
         { status: 409 },
@@ -72,9 +71,8 @@ export async function POST(request: Request) {
     const creds = buildCredentials({
       proxyUsername: getProxyUsername(),
       pakKey: customer.pak_key,
-      network: network as Network,
+      network,
       country: cc,
-      hasModemStock: (inv?.modem ?? 0) > 0,
       rotation,
       protocol,
       sid,
