@@ -25,6 +25,8 @@ export async function provisionTraffic(
   if (!Number.isInteger(gb) || gb < 1) {
     throw new Error(`Traffic must be a whole number of GB (got ${gb})`);
   }
+  // The platform only accepts [A-Za-z0-9_-] in Idempotency-Key (400 otherwise).
+  const idem = idempotencyKey.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 100);
 
   let customer = await queryOne<{ id: string; pak_key_id: string | null }>(
     'SELECT id, pak_key_id FROM customers WHERE user_id = $1',
@@ -45,7 +47,7 @@ export async function provisionTraffic(
       const key = await proxies().poolKeys.topUp(customer.pak_key_id, {
         addTrafficGB: gb,
         extendDays: durationDays,
-        idempotencyKey: `${idempotencyKey}:topup`,
+        idempotencyKey: `${idem}-topup`,
       });
       // A key that hit its cap is auto-suspended by the platform, and topUp
       // does NOT re-enable it — without this the customer pays and the key
@@ -75,7 +77,7 @@ export async function provisionTraffic(
     label: `customer:${userId}`,
     trafficCapGB: gb,
     expiresAt: new Date(Date.now() + durationDays * 86_400_000).toISOString(),
-    idempotencyKey: `${idempotencyKey}:create`,
+    idempotencyKey: `${idem}-create`,
   });
 
   await query(

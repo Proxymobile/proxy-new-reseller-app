@@ -59,16 +59,40 @@ async function fetchAvailability(): Promise<Record<string, AvailabilityEntry>> {
   return body.countries;
 }
 
+// Upstream reports registered company names; customers know the brand.
+const CARRIER_BRANDS: Record<string, string> = {
+  'hutchison 3g uk ltd': 'Three UK',
+  'p4 sp. z o.o.': 'Play',
+  'polkomtel sp. z o.o.': 'Plus',
+  'telefonica germany': 'O2 Germany',
+  'telefonica spain': 'Movistar',
+  'vodafone libertel b.v.': 'Vodafone NL',
+  'kt corporation': 'KT',
+};
+
+/** Customer-facing carrier name, or null if it is an unrecognisable legal entity. */
+function carrierBrand(raw: string): string | null {
+  const name = raw.trim();
+  const mapped = CARRIER_BRANDS[name.toLowerCase()];
+  if (mapped) return mapped;
+  const cleaned = name.replace(/,?\s+(Inc\.?|Ltd\.?|Limited|LLC|B\.V\.|S\.A\.?|S\.p\.A\.|AG|GmbH|Sp\. z o\.o\.)$/i, '').trim();
+  // Long legal names (e.g. "Societe d'ingenierie systeme telecom et reseaux")
+  // mean nothing to a customer — better to omit than to confuse.
+  return cleaned.length > 24 ? null : cleaned;
+}
+
 /** Mobile carrier names per country. Best-effort: inventory still works without it. */
 async function fetchMobileCarriers(): Promise<Record<string, string[]>> {
   try {
     const stock = await proxies().pool.getCarrierStock({ pool: 'all' });
     const out: Record<string, string[]> = {};
     for (const [cc, entry] of Object.entries(stock.countries)) {
-      out[cc.toLowerCase()] = entry.carriers
+      const names = entry.carriers
         .filter((c) => c.ipType === 'mobile' && c.count > 0)
         .sort((a, b) => b.count - a.count)
-        .map((c) => c.name);
+        .map((c) => carrierBrand(c.name))
+        .filter((n): n is string => n !== null);
+      out[cc.toLowerCase()] = Array.from(new Set(names));
     }
     return out;
   } catch (err) {

@@ -149,7 +149,7 @@ const STATUS_META: Record<KeyStatus, { label: string; className: string }> = {
 
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <section className={`rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] ${className}`}>
+    <section className={`min-w-0 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] ${className}`}>
       {children}
     </section>
   );
@@ -540,7 +540,7 @@ export default function KeysPage() {
       )}
 
       {/* Key status + connection details */}
-      <div className="grid gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         <Card className="p-5 lg:col-span-2">
           <div className="flex items-center justify-between gap-2">
             <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${STATUS_META[status].className}`}>
@@ -646,7 +646,7 @@ export default function KeysPage() {
       </div>
 
       {/* Builder */}
-      <div className="grid gap-4 xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
         <Card className="p-5 xl:col-span-2 space-y-6">
           <div>
             <StepLabel n={1}>Network</StepLabel>
@@ -743,7 +743,7 @@ export default function KeysPage() {
           </div>
         </Card>
 
-        <div className="space-y-4 xl:col-span-3">
+        <div className="min-w-0 space-y-4 xl:col-span-3">
           <Card className="p-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -806,7 +806,7 @@ export default function KeysPage() {
                   value={prefix}
                   disabled={!rotationMeta.needsSession}
                   onChange={(e) => setPrefix(sanitizeSessionPrefix(e.target.value))}
-                  placeholder="optional, e.g. shop1"
+                  placeholder="e.g. shop1"
                   className="w-40 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 font-mono text-sm text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-none disabled:opacity-50"
                 />
               </div>
@@ -877,7 +877,11 @@ export default function KeysPage() {
         </div>
       </div>
 
-      {/* Live sessions */}
+      {/* Live sessions — only rendered when the upstream reports some. As of
+          Sep 2026 /gateway/pool/my-sessions returns nothing for pak_ traffic
+          even account-wide, so an always-visible panel would sit empty after
+          promising "it will show up here". */}
+      {sessions && sessions.length > 0 && (
       <Card className="p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -903,13 +907,6 @@ export default function KeysPage() {
 
         {sessionsError && <p className="mt-3 text-xs text-red-600 dark:text-red-400">{sessionsError}</p>}
 
-        {sessions === null && !sessionsError && <p className="mt-4 text-sm text-[var(--color-text-muted)]">Loading…</p>}
-        {sessions && sessions.length === 0 && (
-          <p className="mt-4 rounded-xl border border-dashed border-[var(--color-border)] px-4 py-6 text-center text-sm text-[var(--color-text-muted)]">
-            No open sessions. Use one of your proxies above and it will show up here.
-          </p>
-        )}
-        {sessions && sessions.length > 0 && (
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[640px] text-sm">
               <thead>
@@ -950,8 +947,8 @@ export default function KeysPage() {
               </tbody>
             </table>
           </div>
-        )}
       </Card>
+      )}
 
       {/* Good to know */}
       <Card className="p-5">

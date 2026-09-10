@@ -144,7 +144,7 @@ export async function redeemPromoCode(
     try {
       // Keyed on the redemption row: a failed attempt deletes its row, so a
       // retry gets a fresh key rather than the platform's cached failure.
-      await provisionTraffic(userId, grantGb, TRIAL_DURATION_DAYS, `promo:${redemptionId}`);
+      await provisionTraffic(userId, grantGb, TRIAL_DURATION_DAYS, `promo-${redemptionId}`);
     } catch (err) {
       // Provider failed — roll back the redemption so the user can retry.
       await query('DELETE FROM promo_redemptions WHERE promo_id = $1 AND user_id = $2', [promo.id, userId]);
