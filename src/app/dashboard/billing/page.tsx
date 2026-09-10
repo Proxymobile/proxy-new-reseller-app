@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { config } from '@/config';
 
 interface Transaction {
   id: string;
@@ -39,6 +40,8 @@ export default function BillingPage() {
   const [promoCode, setPromoCode] = useState('');
   const [promoLoading, setPromoLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [cardEnabled, setCardEnabled] = useState(false);
+  const [accountId, setAccountId] = useState('');
 
   const load = useCallback(async () => {
     const res = await fetch('/api/billing');
@@ -46,6 +49,8 @@ export default function BillingPage() {
       const data = await res.json();
       setTransactions(data.transactions);
       setStats(data.stats);
+      setCardEnabled(Boolean(data.payments?.card));
+      setAccountId(data.accountId ?? '');
     }
     setLoading(false);
   }, []);
@@ -153,8 +158,8 @@ export default function BillingPage() {
             </button>
           ))}
         </div>
-        <div className="flex gap-2">
-          <div className="relative flex-1 max-w-[200px]">
+        <div className="flex flex-wrap gap-2">
+          <div className="relative flex-1 min-w-[140px] max-w-[200px]">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[var(--color-text-muted)]">$</span>
             <input
               type="number"
@@ -164,20 +169,27 @@ export default function BillingPage() {
               value={depositAmount}
               onChange={(e) => setDepositAmount(e.target.value)}
               placeholder="0.00"
+              aria-label="Amount in USD"
               className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] pl-7 pr-3 py-2 text-sm text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
             />
           </div>
-          <button
-            onClick={handleStripeDeposit}
-            disabled={depositLoading || !depositAmount || Number(depositAmount) < 5}
-            className="rounded-lg bg-[var(--color-primary)] px-5 py-2 text-sm font-medium text-white hover:opacity-90 transition disabled:opacity-40"
-          >
-            {depositLoading ? 'Redirecting...' : 'Pay with Stripe'}
-          </button>
+          {cardEnabled && (
+            <button
+              onClick={handleStripeDeposit}
+              disabled={depositLoading || !depositAmount || Number(depositAmount) < 5}
+              className="rounded-lg bg-[var(--color-primary)] px-5 py-2 text-sm font-medium text-white hover:opacity-90 transition disabled:opacity-40"
+            >
+              {depositLoading ? 'Redirecting...' : 'Pay by card'}
+            </button>
+          )}
         </div>
-        <p className="text-[10px] text-[var(--color-text-muted)] mt-2">
-          Minimum deposit: $5. Funds are credited instantly after payment.
-        </p>
+        {cardEnabled ? (
+          <p className="text-[10px] text-[var(--color-text-muted)] mt-2">
+            Minimum deposit: $5. Funds are credited instantly after payment.
+          </p>
+        ) : (
+          <ManualTopUp amount={Number(depositAmount) || 0} accountId={accountId} />
+        )}
       </div>
 
       {/* Promo Code */}
@@ -203,7 +215,7 @@ export default function BillingPage() {
           </button>
         </div>
         <p className="text-[10px] text-[var(--color-text-muted)] mt-2">
-          Free credit is added to your balance instantly. One redemption per code.
+          Rewards apply instantly — free traffic goes straight onto your proxy key. One redemption per code.
         </p>
       </div>
 
@@ -259,6 +271,62 @@ export default function BillingPage() {
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Shown while card checkout isn't configured: customers request a top-up and
+ * an admin credits it in /admin. The account ID lets the admin find the
+ * right account without back-and-forth.
+ */
+function ManualTopUp({ amount, accountId }: { amount: number; accountId: string }) {
+  const [copied, setCopied] = useState(false);
+  const amountText = amount >= 5 ? `$${amount.toFixed(2)}` : 'the amount you want';
+  const subject = `Top-up request${amount >= 5 ? ` — $${amount.toFixed(2)}` : ''}`;
+  const body = `Hi, I'd like to add ${amountText} to my ${config.brand.name} balance.\n\nAccount ID: ${accountId}\nPreferred payment method: `;
+  const mailto = `mailto:${config.brand.supportEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const telegram = `https://t.me/${config.brand.supportTelegram}`;
+
+  return (
+    <div className="mt-4 rounded-xl border border-[var(--color-primary)]/20 bg-[var(--color-primary)]/5 p-4">
+      <p className="text-sm font-medium text-[var(--color-text)]">Top-ups are handled by our team</p>
+      <ol className="mt-2 space-y-1 text-xs text-[var(--color-text-muted)] list-decimal pl-4">
+        <li>Message us with the amount and your account ID below — we reply with payment details.</li>
+        <li>Once your payment arrives, we credit your balance, usually within a few hours.</li>
+        <li>Buy traffic from your balance on the Purchase page — your key is ready instantly.</li>
+      </ol>
+      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Account ID</span>
+        <code className="flex-1 min-w-0 truncate font-mono text-xs text-[var(--color-text)]">{accountId || '—'}</code>
+        <button
+          type="button"
+          onClick={() => {
+            navigator.clipboard?.writeText(accountId).catch(() => {});
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+          className="text-xs font-medium text-[var(--color-primary)]"
+        >
+          {copied ? 'Copied ✓' : 'Copy'}
+        </button>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <a
+          href={telegram}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+        >
+          Request on Telegram
+        </a>
+        <a
+          href={mailto}
+          className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-sm font-medium text-[var(--color-text)] transition hover:bg-[var(--color-surface-hover)]"
+        >
+          Request by email
+        </a>
       </div>
     </div>
   );

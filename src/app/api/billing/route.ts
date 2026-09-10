@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { query, queryOne } from '@/lib/db';
+import { isStripeConfigured } from '@/lib/payments';
 
 export async function GET(request: Request) {
   const session = await auth();
@@ -42,6 +43,8 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     transactions,
+    accountId: session.user.id,
+    payments: { card: isStripeConfigured() },
     stats: {
       totalDeposits: Number(stats?.total_deposits ?? 0),
       totalPurchases: Number(stats?.total_purchases ?? 0),

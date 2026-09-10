@@ -1,13 +1,20 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { getStripe } from '@/lib/stripe';
+import { isStripeConfigured } from '@/lib/payments';
 
 export async function POST(request: Request) {
-  const stripe = getStripe();
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  if (!isStripeConfigured()) {
+    return NextResponse.json(
+      { error: 'Card payments are not available yet — please contact support to add balance.' },
+      { status: 503 },
+    );
+  }
+  const stripe = getStripe();
 
   let body: unknown;
   try {

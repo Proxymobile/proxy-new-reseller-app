@@ -78,7 +78,7 @@ export default function PurchasePage() {
           <TrustPill
             icon={<IconShield className="h-4 w-4" />}
             title="Secure"
-            desc="Stripe + bank-grade encryption"
+            desc="Paid from your balance — no card data stored"
           />
           <TrustPill
             icon={<IconClock className="h-4 w-4" />}
