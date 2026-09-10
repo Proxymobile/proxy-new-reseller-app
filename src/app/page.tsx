@@ -16,19 +16,19 @@ export const metadata: Metadata = {
     absolute: 'Buy Mobile Proxies — 4G/5G LTE Carrier IPs from $5/GB | ProxyMobile',
   },
   description:
-    'Buy mobile proxies billed per GB from $5/GB. Real 4G/5G LTE carrier IPs across 9 countries, HTTP & SOCKS5, no signup and instant activation. Start in seconds.',
+    'Buy mobile proxies billed per GB from $5/GB. Real 4G/5G LTE carrier IPs across 10+ countries, HTTP & SOCKS5, no signup and instant activation. Start in seconds.',
   alternates: { canonical: SITE_URL },
   openGraph: {
     title: 'Buy Mobile Proxies — 4G/5G LTE Carrier IPs from $5/GB',
     description:
-      'Pay-per-GB mobile proxies on real 4G/5G LTE carrier IPs across 9 countries. HTTP & SOCKS5, no signup, instant activation.',
+      'Pay-per-GB mobile proxies on real 4G/5G LTE carrier IPs across 10+ countries. HTTP & SOCKS5, no signup, instant activation.',
     url: SITE_URL,
     type: 'website',
   },
   twitter: {
     title: 'Buy Mobile Proxies — 4G/5G LTE Carrier IPs from $5/GB',
     description:
-      'Pay-per-GB mobile proxies on real 4G/5G LTE carrier IPs across 9 countries. HTTP & SOCKS5, no signup, instant activation.',
+      'Pay-per-GB mobile proxies on real 4G/5G LTE carrier IPs across 10+ countries. HTTP & SOCKS5, no signup, instant activation.',
   },
 };
 

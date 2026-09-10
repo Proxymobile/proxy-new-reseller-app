@@ -7,11 +7,20 @@ export const authConfig = {
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;
-      const isAdmin = nextUrl.pathname.startsWith('/admin');
+      const role = (auth?.user as { role?: string } | undefined)?.role;
+      const isAdminPath = nextUrl.pathname.startsWith('/admin');
       const isDashboard = nextUrl.pathname.startsWith('/dashboard');
       const isAuthPage = nextUrl.pathname === '/login' || nextUrl.pathname === '/register';
 
-      if (isAdmin || isDashboard) {
+      // Defense-in-depth: the admin area requires the admin role at the edge,
+      // not merely a valid session. (The admin layout also re-checks server-side.)
+      if (isAdminPath) {
+        if (!isLoggedIn) return false;
+        if (role !== 'admin') return Response.redirect(new URL('/dashboard', nextUrl));
+        return true;
+      }
+
+      if (isDashboard) {
         return isLoggedIn;
       }
 

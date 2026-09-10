@@ -710,6 +710,79 @@ function RotationDemo() {
   );
 }
 
+function ApiVibeCard() {
+  const ref = useRef(null);
+  const inView = useInView(ref, { once: true, margin: '-80px' });
+
+  const codeSegments: { text: string; cls: string }[][] = [
+    [{ text: 'import ', cls: 'text-fuchsia-400' }, { text: 'requests', cls: 'text-gray-200' }],
+    [],
+    [{ text: 'proxy ', cls: 'text-gray-200' }, { text: '= ', cls: 'text-gray-500' }, { text: '"http://psx_live-mbl-us:pak_***@gw.proxies.sx:7000"', cls: 'text-amber-300/80' }],
+    [
+      { text: 'r ', cls: 'text-gray-200' },
+      { text: '= ', cls: 'text-gray-500' },
+      { text: 'requests', cls: 'text-sky-300' },
+      { text: '.get(', cls: 'text-gray-400' },
+    ],
+    [
+      { text: '    "https://api.ipify.org?format=json"', cls: 'text-amber-300/80' },
+      { text: ',', cls: 'text-gray-500' },
+    ],
+    [
+      { text: '    proxies', cls: 'text-gray-200' },
+      { text: '={', cls: 'text-gray-400' },
+      { text: '"https"', cls: 'text-sky-300' },
+      { text: ': proxy}', cls: 'text-gray-400' },
+      { text: ')', cls: 'text-gray-400' },
+    ],
+  ];
+
+  return (
+    <div ref={ref} className="rounded-2xl bg-[#0c0c14] border border-white/[0.06] overflow-hidden">
+      {/* AI prompt bar */}
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.06]">
+        <svg className="h-4 w-4 text-[var(--color-primary)] shrink-0" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 2l1.9 5.6L19.5 9l-4.6 2 .1 5.9L12 14.4 8.9 16.9l.1-5.9L4.5 9l5.6-1.4L12 2z" />
+        </svg>
+        <span className="text-xs text-gray-300">Route my scraper through a US mobile proxy</span>
+      </div>
+
+      {/* Generated code */}
+      <div className="p-4 sm:p-5 font-mono text-xs sm:text-[13px] leading-relaxed">
+        <div className="flex items-center gap-1.5 mb-3 text-[10px] uppercase tracking-widest text-gray-600">
+          <span className="relative inline-flex h-1.5 w-1.5">
+            <span className="absolute inset-0 rounded-full bg-emerald-500 status-dot" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          </span>
+          Generated · works first try
+        </div>
+        {codeSegments.map((line, i) => (
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, x: -6 }}
+            animate={inView ? { opacity: 1, x: 0 } : {}}
+            transition={{ delay: 0.2 + i * 0.12, duration: 0.3 }}
+            className="min-h-[1.2em] whitespace-pre"
+          >
+            {line.map((seg, j) => (
+              <span key={j} className={seg.cls}>{seg.text}</span>
+            ))}
+          </motion.div>
+        ))}
+        <motion.div
+          initial={{ opacity: 0, y: 4 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ delay: 1.1, duration: 0.4 }}
+          className="mt-4 text-[11px] text-gray-500"
+        >
+          <span className="text-gray-600"># </span>
+          <span className="text-emerald-400">{'{ "ip": "174.56.32.xxx" }'}</span>
+        </motion.div>
+      </div>
+    </div>
+  );
+}
+
 function DashboardPreview() {
   return (
     <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl shadow-black/10 overflow-hidden">
@@ -1388,6 +1461,7 @@ function MobileNav() {
                 {[
                   { href: '#pricing', label: 'Pricing' },
                   { href: '#why-us', label: 'Why Us' },
+                  { href: '#api', label: 'API' },
                   { href: '#locations', label: 'Locations' },
                   { href: '#faq', label: 'FAQ' },
                 ].map((item) => (
@@ -1461,6 +1535,7 @@ export default function LandingPage() {
             {[
               { href: '#pricing', label: 'Pricing' },
               { href: '#why-us', label: 'Why Us' },
+              { href: '#api', label: 'API' },
               { href: '#locations', label: 'Locations' },
               { href: '#faq', label: 'FAQ' },
             ].map((item) => (
@@ -1484,7 +1559,7 @@ export default function LandingPage() {
               href="/register"
               className="ml-1 group relative inline-flex items-center gap-1.5 overflow-hidden rounded-full bg-[var(--color-text)] px-5 py-2 text-sm font-semibold text-[var(--color-bg)] transition hover:opacity-90"
             >
-              <span className="relative z-10">Register</span>
+              <span className="relative z-10">Get API key</span>
               <span className="relative z-10 transition-transform group-hover:translate-x-0.5"><Arrow /></span>
               <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/15 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
             </Link>
@@ -1541,7 +1616,7 @@ export default function LandingPage() {
                 transition={{ duration: 0.6, delay: 0.2 }}
                 className="mt-5 text-base sm:text-lg text-[var(--color-text-muted)] max-w-xl lg:max-w-md mx-auto lg:mx-0 leading-relaxed"
               >
-                Real device connections and trusted carrier IPs from 9 countries. Pay only for the bandwidth you use — starting at just $5/GB.
+                Real device connections and trusted carrier IPs from 10+ countries. Pay only for the bandwidth you use — starting at just $5/GB.
               </motion.p>
 
               {/* CTAs */}
@@ -1873,6 +1948,71 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ─── Section 5: API + AI / vibecoding ─── */}
+      <section id="api" className="relative z-10 px-6 py-20 lg:py-28 bg-[var(--color-surface)] border-t border-[var(--color-border)] scroll-mt-20">
+        <div className="mx-auto max-w-6xl">
+          <div className="grid lg:grid-cols-2 gap-10 lg:gap-20 items-center">
+            <motion.div
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true, margin: '-80px' }}
+              variants={stagger}
+            >
+              <motion.p variants={fadeUp} custom={0} className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-primary)] mb-3">
+                API &amp; AI
+              </motion.p>
+              <motion.h2 variants={fadeUp} custom={1} className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-[var(--color-text)] leading-[1.1]">
+                An API your AI can actually use.
+              </motion.h2>
+              <motion.p variants={fadeUp} custom={2} className="mt-4 text-sm text-[var(--color-text-muted)] leading-relaxed">
+                Grab your API key from the dashboard and you&apos;re done. The whole proxy config is a single URL —
+                no SDK to install, no OAuth dance, no 40-page reference to read. Paste it into any HTTP client,
+                scraper, or automation and traffic flows.
+              </motion.p>
+              <motion.p variants={fadeUp} custom={3} className="mt-3 text-sm text-[var(--color-text-muted)] leading-relaxed">
+                That&apos;s exactly why it&apos;s made for vibecoding. Drop the endpoint into Claude, Cursor, or any AI
+                agent and it wires up working requests on the first try — because there&apos;s nothing to get wrong.
+                A REST API is there too for provisioning keys and checking usage when you want to script it.
+              </motion.p>
+
+              <motion.div variants={fadeUp} custom={4} className="mt-6 space-y-3">
+                {[
+                  ['One API key', 'Authenticate every request and every REST call with a single key.'],
+                  ['Pay with API credits', 'Your account balance is your credits — the same balance funds bandwidth and API usage. No separate plan, no meter to reconcile.'],
+                  ['Zero-boilerplate for AI', 'A plain proxy URL means AI tools generate correct code instantly — no hallucinated SDK methods.'],
+                ].map(([title, desc]) => (
+                  <div key={title} className="flex items-start gap-3">
+                    <Check className="mt-0.5 h-4 w-4 text-[var(--color-accent)]" />
+                    <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">
+                      <strong className="text-[var(--color-text)]">{title}.</strong> {desc}
+                    </p>
+                  </div>
+                ))}
+              </motion.div>
+
+              <motion.div variants={fadeUp} custom={5} className="mt-8">
+                <Link
+                  href="/register"
+                  className="group inline-flex items-center gap-2 rounded-full bg-[var(--color-text)] px-6 py-3 text-sm font-semibold text-[var(--color-bg)] transition hover:opacity-90"
+                >
+                  <span>Get API key</span>
+                  <span className="transition-transform group-hover:translate-x-0.5"><Arrow /></span>
+                </Link>
+              </motion.div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: '-80px' }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+            >
+              <ApiVibeCard />
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
       {/* ─── FAQ ─── */}
       <section id="faq" className="relative z-10 px-6 py-20 lg:py-28 scroll-mt-20 bg-[var(--color-surface)] border-y border-[var(--color-border)]">
         <div className="mx-auto max-w-2xl">
@@ -1973,7 +2113,7 @@ export default function LandingPage() {
                 className="h-8 w-auto dark:invert"
               />
               <p className="mt-3 max-w-xs text-xs leading-relaxed text-[var(--color-text-muted)]">
-                Pay-per-GB mobile proxies on real 4G/5G/LTE carrier IPs across 9 countries. HTTP &amp; SOCKS5, instant activation, no signup.
+                Pay-per-GB mobile proxies on real 4G/5G/LTE carrier IPs across 10+ countries. HTTP &amp; SOCKS5, instant activation, no signup.
               </p>
             </div>
 

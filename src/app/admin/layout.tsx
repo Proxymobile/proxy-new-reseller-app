@@ -25,6 +25,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <NavLink href="/admin/accounts">Accounts</NavLink>
           <NavLink href="/admin/accounts/create">Create Account</NavLink>
           <NavLink href="/admin/billing">Billing</NavLink>
+          <NavLink href="/admin/promos">Promo Codes</NavLink>
           <NavLink href="/admin/keys">All Keys</NavLink>
           <NavLink href="/admin/audit">Audit Log</NavLink>
           <NavLink href="/dashboard">Customer View</NavLink>

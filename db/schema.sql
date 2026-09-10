@@ -132,3 +132,42 @@ CREATE INDEX IF NOT EXISTS idx_balance_tx_invoice ON balance_transactions(invoic
 CREATE INDEX IF NOT EXISTS idx_balance_tx_method ON balance_transactions(payment_method);
 CREATE INDEX IF NOT EXISTS idx_audit_log_actor ON audit_log(actor_id);
 CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at DESC);
+
+-- Promo codes (see migrations/003_promo_codes.sql)
+
+CREATE TABLE IF NOT EXISTS promo_codes (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code             TEXT UNIQUE NOT NULL,
+  description      TEXT,
+  credit_usd       NUMERIC(10,2) NOT NULL CHECK (credit_usd > 0 AND credit_usd <= 100),
+  grant_gb         NUMERIC(6,2),                     -- if set, provision this much traffic instead of USD credit
+  max_redemptions  INTEGER,                          -- NULL = unlimited
+  redemption_count INTEGER NOT NULL DEFAULT 0,
+  per_ip_limit     INTEGER NOT NULL DEFAULT 1,       -- max redemptions per IP address
+  new_users_only   BOOLEAN NOT NULL DEFAULT false,   -- account must be < 7 days old
+  active           BOOLEAN NOT NULL DEFAULT true,
+  expires_at       TIMESTAMPTZ,
+  created_by       UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS promo_redemptions (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  promo_id     UUID NOT NULL REFERENCES promo_codes(id) ON DELETE CASCADE,
+  user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  ip_address   INET,
+  credited_usd NUMERIC(10,2) NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (promo_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_promo_codes_code ON promo_codes(code);
+CREATE INDEX IF NOT EXISTS idx_promo_redemptions_promo ON promo_redemptions(promo_id);
+CREATE INDEX IF NOT EXISTS idx_promo_redemptions_user ON promo_redemptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_promo_redemptions_ip ON promo_redemptions(ip_address);
+
+-- Seed the launch code: 200 MB of real proxy traffic provisioned on redemption
+-- (grant_gb = 0.2). credit_usd carries the reference value only.
+INSERT INTO promo_codes (code, description, credit_usd, grant_gb, max_redemptions, per_ip_limit, new_users_only)
+VALUES ('START200', 'Free 200 MB welcome trial', 1.40, 0.2, 500, 1, true)
+ON CONFLICT (code) DO NOTHING;

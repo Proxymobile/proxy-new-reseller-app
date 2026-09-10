@@ -36,6 +36,8 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true);
   const [depositAmount, setDepositAmount] = useState('');
   const [depositLoading, setDepositLoading] = useState(false);
+  const [promoCode, setPromoCode] = useState('');
+  const [promoLoading, setPromoLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -82,6 +84,30 @@ export default function BillingPage() {
       setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Deposit failed' });
       setDepositLoading(false);
     }
+  }
+
+  async function handleRedeemPromo() {
+    if (!promoCode.trim()) return;
+    setPromoLoading(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/promo/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: promoCode.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Failed to redeem code');
+      const text = data.grantedGb
+        ? `Trial activated — ${data.grantedGb >= 1 ? `${data.grantedGb} GB` : `${Math.round(data.grantedGb * 1024)} MB`} added to your key. Visit Keys to start.`
+        : `Promo applied — $${Number(data.creditedUsd).toFixed(2)} added to your balance.`;
+      setMessage({ type: 'success', text });
+      setPromoCode('');
+      await load();
+    } catch (err: unknown) {
+      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to redeem code' });
+    }
+    setPromoLoading(false);
   }
 
   if (loading) return <p className="text-[var(--color-text-muted)]">Loading...</p>;
@@ -151,6 +177,33 @@ export default function BillingPage() {
         </div>
         <p className="text-[10px] text-[var(--color-text-muted)] mt-2">
           Minimum deposit: $5. Funds are credited instantly after payment.
+        </p>
+      </div>
+
+      {/* Promo Code */}
+      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 mb-6">
+        <h2 className="text-sm font-semibold text-[var(--color-text)] mb-3">Redeem Promo Code</h2>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={promoCode}
+            onChange={(e) => setPromoCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 32))}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleRedeemPromo(); }}
+            placeholder="e.g. START200"
+            spellCheck={false}
+            autoComplete="off"
+            className="flex-1 max-w-[200px] rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] font-mono tracking-wider focus:outline-none focus:border-[var(--color-primary)]"
+          />
+          <button
+            onClick={handleRedeemPromo}
+            disabled={promoLoading || !promoCode.trim()}
+            className="rounded-lg bg-[var(--color-primary)] px-5 py-2 text-sm font-medium text-white hover:opacity-90 transition disabled:opacity-40"
+          >
+            {promoLoading ? 'Redeeming...' : 'Redeem'}
+          </button>
+        </div>
+        <p className="text-[10px] text-[var(--color-text-muted)] mt-2">
+          Free credit is added to your balance instantly. One redemption per code.
         </p>
       </div>
 

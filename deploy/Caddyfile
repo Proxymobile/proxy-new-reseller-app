@@ -10,7 +10,10 @@ www.proxymobile.shop {
 # Main site (HTTPS, HTTP/2, HSTS)
 proxymobile.shop {
 	encode gzip zstd
-	reverse_proxy app:3000
+	reverse_proxy app:3000 {
+		# Trusted client IP for rate limits / promo abuse checks.
+		header_up X-Real-IP {remote_host}
+	}
 
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"

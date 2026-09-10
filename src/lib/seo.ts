@@ -23,7 +23,7 @@ export function organizationJsonLd() {
     url: SITE_URL,
     logo: absoluteUrl('/logo.png'),
     description:
-      'ProxyMobile provides pay-per-GB mobile proxies on real 4G/5G/LTE carrier IPs and a residential pool across 9 countries.',
+      'ProxyMobile provides pay-per-GB mobile proxies on real 4G/5G/LTE carrier IPs and a residential pool across 10+ countries.',
     email: 'support@proxymobile.shop',
   };
 }

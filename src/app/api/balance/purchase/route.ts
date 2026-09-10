@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { query, queryOne, nextInvoiceNumber } from '@/lib/db';
 import { getPlan } from '@/config';
-import { proxies } from '@/lib/proxies';
+import { provisionTraffic } from '@/lib/provision';
 import {
   customGbPrice,
   CUSTOM_DURATION_DAYS,
@@ -61,41 +61,28 @@ export async function POST(request: Request) {
     }, { status: 400 });
   }
 
-  const user = await queryOne<{ id: string; balance_usd: string }>(
-    'SELECT id, balance_usd FROM users WHERE id = $1',
-    [session.user.id],
-  );
-  if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
-  }
-
-  const balance = Number(user.balance_usd);
-  if (balance < priceUsd) {
-    return NextResponse.json({
-      error: `Insufficient balance. Need $${priceUsd}, have $${balance.toFixed(2)}`,
-    }, { status: 402 });
-  }
-
-  // Ensure customer row exists
-  let customer = await queryOne<{ id: string; pak_key_id: string | null }>(
-    'SELECT id, pak_key_id FROM customers WHERE user_id = $1',
-    [session.user.id],
-  );
-  if (!customer) {
-    customer = await queryOne<{ id: string; pak_key_id: string | null }>(
-      'INSERT INTO customers (user_id) VALUES ($1) RETURNING id, pak_key_id',
-      [session.user.id],
-    );
-  }
-  if (!customer) {
-    return NextResponse.json({ error: 'Failed to initialize customer' }, { status: 500 });
-  }
-
-  // Debit balance
-  await query(
-    'UPDATE users SET balance_usd = balance_usd - $1, updated_at = now() WHERE id = $2',
+  // ─── ATOMIC DEBIT ───
+  // Single conditional UPDATE: Postgres row-locks the user row, so two
+  // concurrent purchases can't both pass a balance check and overspend.
+  // Returns no row if the user is missing OR the balance is insufficient.
+  const debited = await queryOne<{ balance_usd: string }>(
+    `UPDATE users SET balance_usd = balance_usd - $1, updated_at = now()
+     WHERE id = $2 AND balance_usd >= $1
+     RETURNING balance_usd`,
     [priceUsd, session.user.id],
   );
+  if (!debited) {
+    const cur = await queryOne<{ balance_usd: string }>(
+      'SELECT balance_usd FROM users WHERE id = $1',
+      [session.user.id],
+    );
+    if (!cur) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+    return NextResponse.json({
+      error: `Insufficient balance. Need $${priceUsd.toFixed(2)}, have $${Number(cur.balance_usd).toFixed(2)}`,
+    }, { status: 402 });
+  }
 
   const invoiceNumber = await nextInvoiceNumber();
 
@@ -105,27 +92,10 @@ export async function POST(request: Request) {
     [session.user.id, priceUsd, `Purchase: ${label} (${gb} GB)`, planRef, invoiceNumber],
   );
 
+  let customerId: string;
   try {
-    if (customer.pak_key_id) {
-      await proxies().poolKeys.topUp(customer.pak_key_id, {
-        addTrafficGB: gb,
-        extendDays: durationDays,
-      });
-      // A key that hit its cap is auto-suspended by the gateway, and topUp does
-      // NOT re-enable it — without this the customer pays and the key stays dead.
-      await proxies().poolKeys.update(customer.pak_key_id, { enabled: true });
-    } else {
-      const key = await proxies().poolKeys.create({
-        label: `customer:${session.user.id}`,
-        trafficCapGB: gb,
-        expiresAt: new Date(Date.now() + durationDays * 86_400_000).toISOString(),
-      });
-
-      await query(
-        'UPDATE customers SET pak_key_id = $1, pak_key = $2, traffic_cap_gb = $3 WHERE id = $4',
-        [key.id, key.key, gb, customer.id],
-      );
-    }
+    const result = await provisionTraffic(session.user.id, gb, durationDays);
+    customerId = result.customerId;
   } catch (err: unknown) {
     // Refund balance on provider failure
     await query(
@@ -145,13 +115,13 @@ export async function POST(request: Request) {
   await query(
     `INSERT INTO purchases (customer_id, plan_id, gb_amount, price_usd, status)
      VALUES ($1, $2, $3, $4, 'completed')`,
-    [customer.id, planRef, gb, priceUsd],
+    [customerId, planRef, gb, priceUsd],
   );
 
   await query(
     `INSERT INTO audit_log (actor_id, action, target_type, target_id, metadata)
      VALUES ($1, 'balance_purchase', 'customer', $2, $3)`,
-    [session.user.id, customer.id, JSON.stringify({ planRef, gb, price: priceUsd })],
+    [session.user.id, customerId, JSON.stringify({ planRef, gb, price: priceUsd })],
   );
 
   const updated = await queryOne<{ balance_usd: string }>(

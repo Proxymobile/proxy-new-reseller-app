@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { config } from '@/config';
 import { GB_TIERS } from '@/lib/pricing';
+import { proxies } from '@/lib/proxies';
 import { COUNTRIES, getCountry, siblingCountries } from '@/lib/countries';
 import { JsonLd } from '@/components/JsonLd';
 import {
@@ -45,15 +46,30 @@ export async function generateMetadata({ params }: { params: Promise<Params> }):
 }
 
 export const dynamicParams = false;
+// Re-check live inventory periodically so availability badges stay honest
+// without rebuilding. Pages remain statically served between revalidations.
+export const revalidate = 600;
 
 function money(v: number) {
   return Number.isInteger(v) ? `$${v}` : `$${v.toFixed(2)}`;
+}
+
+/** Live mobile endpoint count for a country code, or null if unknown. */
+async function liveMobileStock(code: string): Promise<number | null> {
+  try {
+    const stock = await proxies().pool.getStock();
+    return stock?.pools?.mbl?.[code] ?? 0;
+  } catch {
+    return null;
+  }
 }
 
 export default async function CountryPage({ params }: { params: Promise<Params> }) {
   const { country: slug } = await params;
   const country = getCountry(slug);
   if (!country) notFound();
+
+  const mblOnline = await liveMobileStock(country.code);
 
   const url = absoluteUrl(`/mobile-proxies/${country.slug}`);
   const siblings = siblingCountries(country.slug, 3);
@@ -132,6 +148,21 @@ export default async function CountryPage({ params }: { params: Promise<Params> 
           <p className="mt-5 text-base sm:text-lg text-[var(--color-text-muted)] leading-relaxed">
             {country.intro}
           </p>
+
+          {/* Live availability — reflects real upstream inventory */}
+          {mblOnline !== null && (
+            mblOnline > 0 ? (
+              <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-1.5 text-xs font-medium text-emerald-500">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
+                {mblOnline} live {country.shortName} mobile {mblOnline === 1 ? 'endpoint' : 'endpoints'} online now
+              </div>
+            ) : (
+              <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3.5 py-1.5 text-xs font-medium text-amber-500">
+                <span className="h-2 w-2 rounded-full bg-amber-500" aria-hidden />
+                {country.shortName} mobile pool is replenishing — residential {country.shortName} IPs are available now
+              </div>
+            )
+          )}
 
           {/* Primary CTA */}
           <div className="mt-7 flex flex-wrap items-center gap-3">
@@ -250,7 +281,7 @@ export default async function CountryPage({ params }: { params: Promise<Params> 
               ))}
             </div>
             <p className="mt-4 text-sm text-[var(--color-text-muted)]">
-              Or head back to the <Link href="/#pricing" className="text-[var(--color-primary)] hover:underline">homepage pricing</Link> to compare all 9 countries.
+              Or head back to the <Link href="/#pricing" className="text-[var(--color-primary)] hover:underline">homepage pricing</Link> to compare all our countries.
             </p>
           </section>
         </article>

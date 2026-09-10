@@ -482,6 +482,104 @@ export const COUNTRIES: Country[] = [
       },
     ],
   },
+  {
+    code: 'nl',
+    slug: 'netherlands',
+    name: 'Netherlands',
+    shortName: 'Netherlands',
+    flag: '\u{1F1F3}\u{1F1F1}',
+    capital: 'Amsterdam',
+    carriers: ['KPN', 'Vodafone NL', 'Odido'],
+    title: 'Buy Netherlands Mobile Proxies — Real KPN & Vodafone 4G/5G IPs | ProxyMobile',
+    description:
+      'Netherlands mobile proxies on real KPN, Vodafone NL and Odido 4G/5G carrier IPs. Pay per GB from $5/GB, no signup, instant activation. HTTP & SOCKS5, native Dutch addresses.',
+    h1: 'Netherlands Mobile Proxies — Real KPN, Vodafone & Odido 4G/5G IPs',
+    intro:
+      'Our Netherlands pool routes through real KPN, Vodafone NL and Odido SIM cards — carrier IPs identical to a phone in Amsterdam or Rotterdam. Dutch mobile networks sit on some of the best infrastructure in Europe, and it is consistently one of our deepest non-US mobile pools, so parallel Dutch sessions stay stable at scale.',
+    sections: [
+      {
+        heading: 'Why Dutch carrier IPs perform',
+        body: 'European platforms weight mobile ASNs like KPN and Vodafone NL far more generously than datacenter ranges. Carrier-grade NAT puts many real Dutch subscribers behind each address, so blocking one risks blocking genuine customers — which is exactly why sites that reject datacenter and even residential ranges let Dutch carrier traffic through on the first request.',
+      },
+      {
+        heading: 'Deep, stable Dutch pool',
+        body: 'The Netherlands is one of our largest mobile pools by live endpoint count, so you can run many concurrent Dutch sessions without exhausting fresh IPs. That depth matters for account management and wide collection where each session needs its own trusted address rather than recycling a handful of IPs.',
+      },
+      {
+        heading: 'Rotation and sessions for NL targets',
+        body: 'Pin one KPN IP for a login session with sticky mode, or cycle a fresh carrier IP per request for large-scale work. Run dozens of parallel Dutch sessions, each keyed to its own session ID and IP, with no API calls. Switching from Dutch mobile to the residential NL pool is a three-character change in the same URL.',
+      },
+    ],
+    useCases: [
+      'Managing multiple Dutch social and marketplace accounts',
+      'Verifying Netherlands-targeted ad campaigns',
+      'Localized Google/retail price and ranking checks in NL',
+      'EU-market research on a high-trust mobile IP',
+    ],
+    faqs: [
+      {
+        q: 'Which Dutch carriers are in the pool?',
+        a: 'Exits use real SIM cards on KPN, Vodafone NL and Odido in physical 4G/5G modems — the same carrier IPs a Dutch phone receives.',
+      },
+      {
+        q: 'Why are Netherlands mobile proxies useful?',
+        a: 'Dutch carrier IPs read as native consumer traffic, so NL and EU sites serve real localized content instead of geoblocking foreign datacenter ranges. It is also one of our deepest mobile pools, so sessions stay stable at scale.',
+      },
+      {
+        q: 'What is the starting price?',
+        a: 'Pay-per-GB from $5/GB at volume with no subscription. Unused data never expires and your key simply stops at zero.',
+      },
+    ],
+  },
+  {
+    code: 'ge',
+    slug: 'georgia',
+    name: 'Georgia',
+    shortName: 'Georgia',
+    flag: '\u{1F1EC}\u{1F1EA}',
+    capital: 'Tbilisi',
+    carriers: ['Magti', 'Silknet', 'Cellfie'],
+    title: 'Buy Georgia Mobile Proxies — Real Magti & Silknet 4G/LTE IPs | ProxyMobile',
+    description:
+      'Georgia (Caucasus) mobile proxies on real Magti, Silknet and Cellfie 4G/LTE carrier IPs. Pay per GB from $5/GB, no signup, instant activation. HTTP & SOCKS5, native GE addresses.',
+    h1: 'Georgia Mobile Proxies — Real Magti, Silknet & Cellfie 4G/LTE IPs',
+    intro:
+      'Our Georgia pool routes through real Magti, Silknet and Cellfie SIM cards — carrier IPs identical to a phone in Tbilisi or Batumi. Georgian mobile IPs are scarce in commercial proxy networks, so these exits reach a Caucasus market that datacenter ranges cannot convincingly serve. This is the country of Georgia (GE), not the US state.',
+    sections: [
+      {
+        heading: 'Rare Georgian carrier IPs',
+        body: 'Magti and Silknet run the mobile networks that Georgian platforms treat as native consumer traffic. Because few providers carry genuine Georgian mobile IPs, these exits are hard to fingerprint as proxy traffic, and carrier NAT keeps many real subscribers behind each address — so they remain usable where a foreign datacenter IP is geoblocked on sight.',
+      },
+      {
+        heading: 'Observing the Georgian market',
+        body: 'Lari pricing, Georgian-language creative and Georgia-only availability render only for trusted local visitors. A genuine Georgian carrier exit shows regional retail and service portals the way a user in Tbilisi sees them — correct pricing, availability and promotions — essential for any research or verification aimed at the Georgian market.',
+      },
+      {
+        heading: 'Rotation and parallel sessions',
+        body: 'Sticky mode pins one Magti IP through a session; hard-rotate cycles per request for wider collection. Run parallel Georgian sessions, each on its own IP, using unique session IDs — no API needed. Country and rotation both live in the URL, so switching between Georgian mobile and residential exits takes seconds.',
+      },
+    ],
+    useCases: [
+      'Localized research in an underserved Caucasus market',
+      'Ad verification for Georgia-targeted campaigns',
+      'Managing regional accounts and services',
+      'Availability and pricing checks on Georgian portals',
+    ],
+    faqs: [
+      {
+        q: 'Which Georgian carriers are in the pool?',
+        a: 'Exits use real SIM cards on Magti, Silknet and Cellfie in physical 4G/LTE modems — the same carrier IPs a Georgian phone receives.',
+      },
+      {
+        q: 'Is this the country or the US state?',
+        a: 'The country of Georgia (GE) in the Caucasus, with exits on Georgian mobile carriers — not the US state of Georgia.',
+      },
+      {
+        q: 'What is the starting price?',
+        a: 'Pay-per-GB from $5/GB at volume with no subscription. Unused data never expires and your key simply stops at zero.',
+      },
+    ],
+  },
 ];
 
 export function getCountry(slug: string): Country | undefined {

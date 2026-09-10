@@ -37,19 +37,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
 
-  // For debit, check sufficient balance
-  if (txType === 'debit' && Number(user.balance_usd) < amount) {
-    return NextResponse.json({
-      error: `Insufficient balance. User has $${Number(user.balance_usd).toFixed(2)}`,
-    }, { status: 400 });
+  if (txType === 'debit') {
+    // Atomic guarded debit — no check-then-act race.
+    const ok = await queryOne<{ balance_usd: string }>(
+      `UPDATE users SET balance_usd = balance_usd - $1, updated_at = now()
+       WHERE id = $2 AND balance_usd >= $1
+       RETURNING balance_usd`,
+      [amount, userId],
+    );
+    if (!ok) {
+      return NextResponse.json({
+        error: `Insufficient balance. User has $${Number(user.balance_usd).toFixed(2)}`,
+      }, { status: 400 });
+    }
+  } else {
+    await query(
+      'UPDATE users SET balance_usd = balance_usd + $1, updated_at = now() WHERE id = $2',
+      [amount, userId],
+    );
   }
-
-  const dbAmount = txType === 'debit' ? -amount : amount;
-
-  await query(
-    'UPDATE users SET balance_usd = balance_usd + $1, updated_at = now() WHERE id = $2',
-    [dbAmount, userId],
-  );
 
   const defaultReason = txType === 'debit' ? 'Manual debit by admin' : 'Manual top-up by admin';
 

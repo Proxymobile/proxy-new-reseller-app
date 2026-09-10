@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { signIn } from 'next-auth/react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -20,6 +20,18 @@ export default function LoginPage() {
   const [signupLabel, setSignupLabel] = useState('');
   const [signupLoading, setSignupLoading] = useState(false);
   const [generatedCode, setGeneratedCode] = useState('');
+  const [promoCode, setPromoCode] = useState('');
+  const [promoResult, setPromoResult] = useState<{ creditedUsd?: number; grantedGb?: number; error?: string } | null>(null);
+
+  // Prefill promo code from ?promo= (marketing links) and open signup directly
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const promo = params.get('promo');
+    if (promo) {
+      setPromoCode(promo.toUpperCase());
+      setMode('signup');
+    }
+  }, []);
 
   // Wallet state
   const [walletLoading, setWalletLoading] = useState(false);
@@ -52,7 +64,10 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label: signupLabel.trim() || undefined }),
+        body: JSON.stringify({
+          label: signupLabel.trim() || undefined,
+          promoCode: promoCode.trim() || undefined,
+        }),
       });
       const data = await res.json();
       setSignupLoading(false);
@@ -63,6 +78,7 @@ export default function LoginPage() {
       }
 
       setGeneratedCode(data.accessCode);
+      setPromoResult(data.promo ?? null);
       setMode('signup-result');
     } catch {
       setSignupLoading(false);
@@ -297,6 +313,22 @@ export default function LoginPage() {
                     />
                   </div>
 
+                  <div>
+                    <label htmlFor="promoCode" className="block text-xs font-medium text-[var(--color-text-muted)] mb-2">
+                      Promo Code <span className="text-[var(--color-text-muted)]/50">(optional)</span>
+                    </label>
+                    <input
+                      id="promoCode"
+                      type="text"
+                      value={promoCode}
+                      onChange={(e) => setPromoCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 32))}
+                      className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-2.5 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]/40 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] font-mono tracking-wider transition-all"
+                      placeholder="e.g. START200"
+                      spellCheck={false}
+                      autoComplete="off"
+                    />
+                  </div>
+
                   {error && (
                     <motion.p
                       initial={{ opacity: 0, y: -4 }}
@@ -354,6 +386,22 @@ export default function LoginPage() {
                 <p className="text-xs text-red-500 text-center mb-4">
                   This is your only login credential. Copy it now and store it safely.
                 </p>
+
+                {promoResult?.grantedGb !== undefined && (
+                  <p className="text-xs text-emerald-500 text-center mb-4 font-medium">
+                    Trial activated — {promoResult.grantedGb >= 1 ? `${promoResult.grantedGb} GB` : `${Math.round(promoResult.grantedGb * 1024)} MB`} of free proxy traffic added. Sign in and open Keys to start.
+                  </p>
+                )}
+                {promoResult?.creditedUsd !== undefined && promoResult?.grantedGb === undefined && (
+                  <p className="text-xs text-emerald-500 text-center mb-4 font-medium">
+                    Promo applied — ${promoResult.creditedUsd.toFixed(2)} free credit added to your balance.
+                  </p>
+                )}
+                {promoResult?.error && (
+                  <p className="text-xs text-amber-500 text-center mb-4">
+                    Promo code not applied: {promoResult.error}. Your account was still created.
+                  </p>
+                )}
 
                 <div className="space-y-2">
                   <button

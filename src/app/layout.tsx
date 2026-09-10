@@ -24,10 +24,12 @@ export const metadata: Metadata = {
     siteName: SITE_NAME,
     locale: 'en_US',
     url: SITE_URL,
+    images: [{ url: '/og-ad.png', width: 1376, height: 768, alt: `${SITE_NAME} — Mobile proxies on real 4G/5G carrier IPs` }],
   },
   twitter: {
     card: 'summary_large_image',
     site: '@proxymobile',
+    images: ['/og-ad.png'],
   },
   icons: {
     icon: [

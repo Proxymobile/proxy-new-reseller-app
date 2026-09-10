@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAccount } from '@/lib/auth';
 import { query } from '@/lib/db';
+import { redeemPromoCode, extractIp } from '@/lib/promo';
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -10,7 +11,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { label } = body as Record<string, unknown>;
+  const { label, promoCode } = body as Record<string, unknown>;
 
   const accountLabel =
     typeof label === 'string' && label.trim().length > 0
@@ -29,8 +30,22 @@ export async function POST(request: Request) {
       [user.id, user.id, JSON.stringify({ label: accountLabel })],
     );
 
+    // Optional promo code — a bad code never blocks signup
+    let promo: { creditedUsd?: number; grantedGb?: number; error?: string } | undefined;
+    if (typeof promoCode === 'string' && promoCode.trim()) {
+      try {
+        const result = await redeemPromoCode(user.id, promoCode, extractIp(request));
+        promo = result.ok
+          ? { creditedUsd: result.creditedUsd, grantedGb: result.grantedGb }
+          : { error: result.error };
+      } catch (err) {
+        console.error('[auth/signup] Promo redemption failed:', err);
+        promo = { error: 'Promo redemption failed' };
+      }
+    }
+
     return NextResponse.json(
-      { accessCode: user.access_code, label: user.label },
+      { accessCode: user.access_code, label: user.label, promo },
       { status: 201 },
     );
   } catch (err: unknown) {
