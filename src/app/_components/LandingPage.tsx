@@ -1555,7 +1555,7 @@ export default function LandingPage() {
                   href="/login"
                   className="group relative inline-flex items-center gap-2 overflow-hidden rounded-full bg-[var(--color-text)] px-7 py-3 text-sm font-semibold text-[var(--color-bg)] transition hover:opacity-90 shadow-lg shadow-[var(--color-primary)]/15"
                 >
-                  <span className="relative z-10">Get Started</span>
+                  <span className="relative z-10">Get API Key</span>
                   <span className="relative z-10 transition-transform group-hover:translate-x-0.5"><Arrow /></span>
                   <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/15 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
                 </Link>
@@ -1941,7 +1941,7 @@ export default function LandingPage() {
               href="/login"
               className="group relative inline-flex items-center gap-2 overflow-hidden rounded-full bg-white px-8 py-3.5 text-sm font-semibold text-[#0c0c14] hover:bg-gray-100 transition shadow-2xl shadow-[var(--color-primary)]/20"
             >
-              <span className="relative z-10">Get Started</span>
+              <span className="relative z-10">Get API Key</span>
               <span className="relative z-10 transition-transform group-hover:translate-x-0.5"><Arrow /></span>
             </Link>
           </motion.div>

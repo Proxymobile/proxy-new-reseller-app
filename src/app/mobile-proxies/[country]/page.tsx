@@ -100,7 +100,7 @@ export default async function CountryPage({ params }: { params: Promise<Params> 
               href="/register"
               className="rounded-full bg-[var(--color-text)] px-5 py-2 font-semibold text-[var(--color-bg)] transition hover:opacity-90"
             >
-              Get Started
+              Get API Key
             </Link>
           </nav>
         </div>
