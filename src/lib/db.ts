@@ -32,4 +32,27 @@ export async function nextInvoiceNumber(): Promise<string> {
   return `INV-${row!.n}`;
 }
 
+export type TxQuery = <T extends QueryResultRow = QueryResultRow>(sql: string, params?: unknown[]) => Promise<T[]>;
+
+/**
+ * Run `fn` inside one transaction on a dedicated connection: everything
+ * commits together or nothing does. Use for money movements, where a partial
+ * write followed by a retry would double-credit.
+ */
+export async function withTransaction<R>(fn: (q: TxQuery) => Promise<R>): Promise<R> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const q: TxQuery = async (sql, params = []) => (await client.query(sql, params)).rows;
+    const result = await fn(q);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export { pool };
