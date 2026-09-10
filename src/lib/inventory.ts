@@ -44,9 +44,12 @@ let cache: { at: number; value: Inventory } | null = null;
 let inflight: Promise<Inventory> | null = null;
 
 async function fetchAvailability(): Promise<Record<string, AvailabilityEntry>> {
+  // `revalidate` (not `no-store`) so ISR pages like /mobile-proxies/[country]
+  // can call this during static regeneration; `no-store` would force them
+  // dynamic and throw during prerender.
   const res = await fetch(AVAILABILITY_URL, {
     signal: AbortSignal.timeout(TIMEOUT_MS),
-    cache: 'no-store',
+    next: { revalidate: TTL_MS / 1000 },
   });
   if (!res.ok) throw new Error(`availability ${res.status}`);
   const body = (await res.json()) as { countries?: Record<string, AvailabilityEntry> };
