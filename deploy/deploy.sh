@@ -52,9 +52,12 @@ cd deploy
 # idempotent (IF NOT EXISTS / guarded DO blocks), so re-running is safe; any
 # error aborts the deploy with the old app still serving.
 echo "==> Migrating database..."
-docker compose -f docker-compose.prod.yml up -d db
+# NOTE: this whole block is fed to `bash -s` on stdin. Any command that reads
+# stdin (docker compose exec!) must get </dev/null or an explicit file, or it
+# swallows the rest of this script and the deploy silently stops here.
+docker compose -f docker-compose.prod.yml up -d db </dev/null
 for i in $(seq 1 30); do
-  docker compose -f docker-compose.prod.yml exec -T db pg_isready -U proxy_reseller -d proxy_reseller >/dev/null 2>&1 && break
+  docker compose -f docker-compose.prod.yml exec -T db pg_isready -U proxy_reseller -d proxy_reseller </dev/null >/dev/null 2>&1 && break
   sleep 1
 done
 for f in ../db/schema.sql $(ls ../db/migrations/*.sql | sort); do
@@ -63,16 +66,16 @@ for f in ../db/schema.sql $(ls ../db/migrations/*.sql | sort); do
     psql -q -v ON_ERROR_STOP=1 -U proxy_reseller -d proxy_reseller < "$f"
 done
 
-docker compose -f docker-compose.prod.yml build --no-cache
-docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml build --no-cache </dev/null
+docker compose -f docker-compose.prod.yml up -d </dev/null
 
 echo "==> Waiting for services..."
 sleep 5
-docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml ps </dev/null
 echo "==> Health check (ok:true = ready for customers):"
 out=""
 for i in $(seq 1 20); do
-  out=$(curl -s -w ' [HTTP %{http_code}]' http://127.0.0.1:3000/api/healthz || true)
+  out=$(curl -s -w ' [HTTP %{http_code}]' http://127.0.0.1:3000/api/healthz </dev/null || true)
   case "$out" in *"HTTP 000"*|"") sleep 2 ;; *) break ;; esac
 done
 echo "$out"
