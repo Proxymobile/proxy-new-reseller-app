@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { FIRST_TOPUP_BONUS_USD } from '@/lib/pricing';
 
 interface Transaction {
   id: string;
@@ -138,6 +139,11 @@ export default function BillingPage() {
       {/* Deposit */}
       <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 mb-6">
         <h2 className="text-sm font-semibold text-[var(--color-text)] mb-3">Add Funds</h2>
+        {stats && stats.totalDeposits === 0 && (
+          <p className="mb-3 inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-accent)]/10 px-2.5 py-1.5 text-xs font-semibold text-[var(--color-accent)]">
+            Welcome bonus: ${FIRST_TOPUP_BONUS_USD} free credit is added on top of your first deposit.
+          </p>
+        )}
         <div className="flex flex-wrap gap-2 mb-3">
           {DEPOSIT_PRESETS.map((amt) => (
             <button
@@ -177,6 +183,7 @@ export default function BillingPage() {
         </div>
         <p className="text-[10px] text-[var(--color-text-muted)] mt-2">
           Minimum deposit: $5. Funds are credited instantly after payment.
+          {stats && stats.totalDeposits === 0 && ` Your $${FIRST_TOPUP_BONUS_USD} welcome bonus lands with it.`}
         </p>
       </div>
 

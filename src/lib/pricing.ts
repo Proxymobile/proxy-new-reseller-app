@@ -28,6 +28,13 @@ export function customGbRatePerGB(gb: number): number {
   return total / gb;
 }
 
+/**
+ * One-time welcome credit granted the first time a user's top-up settles.
+ * Granted server-side in the Stripe webhook — the landing page only advertises
+ * this constant, so the number on the site and the number credited can't drift.
+ */
+export const FIRST_TOPUP_BONUS_USD = 2;
+
 export const CUSTOM_DURATION_DAYS = 30;
 export const CUSTOM_MIN_GB = 1;
 export const CUSTOM_MAX_GB = 100;

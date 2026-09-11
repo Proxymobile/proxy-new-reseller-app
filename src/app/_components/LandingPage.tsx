@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { motion, AnimatePresence, useInView, useReducedMotion } from 'framer-motion';
 import { config } from '@/config';
-import { customGbPrice, customGbRatePerGB, GB_TIERS } from '@/lib/pricing';
+import { customGbPrice, customGbRatePerGB, GB_TIERS, FIRST_TOPUP_BONUS_USD } from '@/lib/pricing';
 import { COUNTRIES } from '@/lib/countries';
 import { HOME_FAQS } from '@/lib/home-faqs';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -326,7 +326,7 @@ function EndpointBadge() {
         <span className="text-[10px] font-semibold uppercase tracking-[0.14em] opacity-70">Endpoint</span>
       </div>
       <p className="mt-1.5 font-mono text-xs sm:text-sm tracking-tight">
-        gw.proxies.sx<span className="opacity-50">:7000</span>
+        proxies.mobile<span className="opacity-50">:7000</span>
       </p>
     </div>
   );
@@ -379,7 +379,7 @@ function ConfigComparison() {
                 <svg className="w-4 h-4 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
-                <span className="font-mono text-sm text-emerald-400">gw.proxies.sx:7000</span>
+                <span className="font-mono text-sm text-emerald-400">proxies.mobile:7000</span>
               </div>
               <p className="text-[10px] text-gray-600 mt-2 ml-6">One endpoint. Every country. Both protocols.</p>
             </div>
@@ -445,7 +445,7 @@ function UrlAnatomy() {
         <span className="text-gray-700">:</span>
         <span className="text-gray-600">pak_***</span>
         <span className="text-gray-700">@</span>
-        <span className="text-gray-600">gw.proxies.sx:7000</span>
+        <span className="text-gray-600">proxies.mobile:7000</span>
       </div>
       <motion.p
         initial={{ opacity: 0 }}
@@ -467,7 +467,7 @@ function TerminalDemo() {
     { text: '$ ', cls: 'text-emerald-400' },
     { text: 'curl ', cls: 'text-gray-200' },
     { text: '-x ', cls: 'text-sky-400' },
-    { text: 'http://user-mbl-us-rot-sticky:pak_***@gw.proxies.sx:7000 ', cls: 'text-amber-300/80' },
+    { text: 'http://user-mbl-us-rot-sticky:pak_***@proxies.mobile:7000 ', cls: 'text-amber-300/80' },
     { text: 'ipinfo.io', cls: 'text-gray-200' },
   ];
 
@@ -567,7 +567,7 @@ function PoolToggle() {
             {isMobile ? 'mbl' : 'peer'}
           </motion.span>
         </AnimatePresence>
-        <span>-us:pak_***@gw.proxies.sx:7000</span>
+        <span>-us:pak_***@proxies.mobile:7000</span>
       </div>
 
       <AnimatePresence mode="wait">
@@ -717,7 +717,7 @@ function ApiVibeCard() {
   const codeSegments: { text: string; cls: string }[][] = [
     [{ text: 'import ', cls: 'text-fuchsia-400' }, { text: 'requests', cls: 'text-gray-200' }],
     [],
-    [{ text: 'proxy ', cls: 'text-gray-200' }, { text: '= ', cls: 'text-gray-500' }, { text: '"http://psx_live-mbl-us:pak_***@gw.proxies.sx:7000"', cls: 'text-amber-300/80' }],
+    [{ text: 'proxy ', cls: 'text-gray-200' }, { text: '= ', cls: 'text-gray-500' }, { text: '"http://psx_live-mbl-us:pak_***@proxies.mobile:7000"', cls: 'text-amber-300/80' }],
     [
       { text: 'r ', cls: 'text-gray-200' },
       { text: '= ', cls: 'text-gray-500' },
@@ -841,7 +841,7 @@ function DashboardPreview() {
             <p className="text-[9px] font-medium text-[var(--color-text)] mb-2">Proxy URL</p>
             <div className="rounded bg-[var(--color-bg)] border border-[var(--color-border)] px-2 py-1.5">
               <code className="text-[8px] text-[var(--color-primary)] break-all">
-                http://psx_69fb...-mbl-us-rot-sticky:pak_a8f2...@gw.proxies.sx:7000
+                http://psx_69fb...-mbl-us-rot-sticky:pak_a8f2...@proxies.mobile:7000
               </code>
             </div>
           </div>
@@ -998,7 +998,155 @@ function PaymentIcons() {
   );
 }
 
+// Both billing modes are priced per GB on the same curve — they differ only in
+// WHEN you pay: a bundle up front, or credits drawn down as the API meters use.
+const BILLING_MODES = [
+  { id: 'gb', label: 'Prepaid GB' },
+  { id: 'api', label: 'API · pay as you go' },
+] as const;
+
+type BillingMode = (typeof BILLING_MODES)[number]['id'];
+
+const API_STEPS = [
+  {
+    n: '1',
+    title: 'Create your account',
+    body: 'Sign up in under a minute and get your proxy endpoint and credentials from the dashboard.',
+  },
+  {
+    n: '2',
+    title: 'Add credits',
+    body: `Top up from $5 in your dashboard. Your first top-up gets ${money(FIRST_TOPUP_BONUS_USD)} free on top.`,
+  },
+  {
+    n: '3',
+    title: 'Send traffic',
+    body: 'Every GB you use is metered and drawn from your credit balance at the rate below — top up again whenever you run low.',
+  },
+];
+
+const API_FEATURES = [
+  'Same per-GB rates as prepaid — no API surcharge',
+  'HTTP & SOCKS5 protocols',
+  'Unlimited parallel sessions',
+  'All 10+ countries included',
+  'On-demand IP rotation',
+  'Live usage and balance in your dashboard',
+];
+
+function ApiPricingPanel() {
+  const entry = GB_TIERS[0];
+  const best = GB_TIERS[GB_TIERS.length - 1];
+
+  return (
+    <motion.div
+      id="pricing-panel-api"
+      role="tabpanel"
+      aria-labelledby="pricing-tab-api"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45 }}
+      className="relative rounded-[28px] bg-gradient-to-br from-[var(--color-primary)]/6 via-[var(--color-surface)] to-[var(--color-surface)] border border-[var(--color-primary)]/20 p-6 sm:p-8 shadow-premium edge-light"
+    >
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 pb-6 border-b border-[var(--color-border)]">
+        <div>
+          <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-text-muted)] mb-2">
+            Usage-based
+          </p>
+          <p className="text-lg font-semibold text-[var(--color-text)]">
+            Pay only for the GB you actually use
+          </p>
+          <p className="mt-1 text-sm text-[var(--color-text-muted)] max-w-sm">
+            No bundle to size up front. Load credits, send traffic, and the meter
+            does the rest.
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-4xl sm:text-5xl font-bold text-[var(--color-text)] tracking-tight tabular-nums">
+            {money(best.perGb)}
+          </p>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">
+            per GB at volume · {money(entry.perGb)} to start
+          </p>
+          <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[var(--color-accent)]/10 px-2.5 py-1 text-[11px] font-semibold text-[var(--color-accent)]">
+            <Check className="h-3 w-3 text-[var(--color-accent)]" />
+            {money(FIRST_TOPUP_BONUS_USD)} free on your first top-up
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-4 sm:grid-cols-3">
+        {API_STEPS.map((s) => (
+          <div
+            key={s.n}
+            className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+          >
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--color-primary)]/10 text-[11px] font-bold text-[var(--color-primary)]">
+              {s.n}
+            </span>
+            <p className="mt-2.5 text-sm font-semibold text-[var(--color-text)]">{s.title}</p>
+            <p className="mt-1 text-xs leading-relaxed text-[var(--color-text-muted)]">{s.body}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Volume rates — same curve the prepaid slider uses */}
+      <div className="mt-6">
+        <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--color-text-muted)] mb-3">
+          Your rate drops as you use more
+        </p>
+        <div className="overflow-x-auto">
+          <div className="grid min-w-[420px] grid-cols-6 gap-2">
+            {GB_TIERS.map((t) => (
+              <div
+                key={t.gb}
+                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-2.5 text-center"
+              >
+                <p className="text-[11px] font-medium text-[var(--color-text-muted)]">{t.gb} GB</p>
+                <p className="mt-0.5 text-sm font-bold tabular-nums text-[var(--color-text)]">
+                  ${t.perGb.toFixed(2)}
+                </p>
+                {t.discount > 0 && (
+                  <p className="text-[10px] font-bold text-[var(--color-accent)]">-{t.discount}%</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6 grid sm:grid-cols-2 gap-x-6 gap-y-3">
+        {API_FEATURES.map((f) => (
+          <div key={f} className="flex items-center gap-2 text-sm text-[var(--color-text)]">
+            <Check className="h-3.5 w-3.5 text-[var(--color-accent)]" />
+            {f}
+          </div>
+        ))}
+      </div>
+
+      <Link
+        href="/register"
+        className="mt-7 group relative flex items-center justify-center gap-2 rounded-2xl bg-[var(--color-text)] py-3.5 text-sm font-semibold text-[var(--color-bg)] hover:opacity-90 transition shadow-lg shadow-[var(--color-primary)]/20 overflow-hidden"
+      >
+        <span className="relative z-10 flex items-center gap-2">
+          Start with {money(FIRST_TOPUP_BONUS_USD)} free credit <Arrow />
+        </span>
+        <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
+      </Link>
+
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5 border-t border-[var(--color-border)] pt-4">
+        <PaymentIcons />
+      </div>
+
+      <p className="mt-4 text-center text-[11px] text-[var(--color-text-muted)]">
+        No subscription · No monthly commitment · Top up from $5
+      </p>
+    </motion.div>
+  );
+}
+
 function InteractivePricing() {
+  const [mode, setMode] = useState<BillingMode>('gb');
   const [country, setCountry] = useState('us');
   const [gb, setGb] = useState(POPULAR_GB);
   const [dragging, setDragging] = useState(false);
@@ -1127,10 +1275,54 @@ function InteractivePricing() {
             Mobile Proxy Pricing
           </motion.h2>
           <motion.p variants={fadeUp} custom={2} className="mt-4 text-sm sm:text-base text-[var(--color-text-muted)] max-w-md mx-auto">
-            Pay per GB — no subscriptions. Each purchase is valid for 30 days; top-ups extend it.
+            Always pay per GB — no subscriptions. Buy a bundle up front, or let the
+            API meter what you actually use and draw it from your credits.
           </motion.p>
         </motion.div>
 
+        {/* Billing mode switch — both modes are per-GB, they differ in how you pay */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: '-50px' }}
+          transition={{ duration: 0.45, delay: 0.15 }}
+          className="mb-10 flex justify-center"
+        >
+          <div
+            role="tablist"
+            aria-label="Billing mode"
+            className="inline-flex rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-1 shadow-premium"
+          >
+            {BILLING_MODES.map((m) => {
+              const selected = mode === m.id;
+              return (
+                <button
+                  key={m.id}
+                  role="tab"
+                  id={`pricing-tab-${m.id}`}
+                  aria-selected={selected}
+                  aria-controls={`pricing-panel-${m.id}`}
+                  onClick={() => setMode(m.id)}
+                  className={`relative rounded-xl px-4 sm:px-6 py-2.5 text-sm font-semibold transition-colors ${
+                    selected ? 'text-white' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                  }`}
+                >
+                  {selected && (
+                    <motion.span
+                      layoutId="pricing-mode-pill"
+                      transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                      className="absolute inset-0 rounded-xl bg-[var(--color-primary)] shadow-[0_4px_12px_rgba(79,70,229,0.3)]"
+                    />
+                  )}
+                  <span className="relative z-10 whitespace-nowrap">{m.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </motion.div>
+
+        {mode === 'gb' && (
+        <div id="pricing-panel-gb" role="tabpanel" aria-labelledby="pricing-tab-gb">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -1371,11 +1563,37 @@ function InteractivePricing() {
             7-day money-back guarantee · No hidden fees · Cancel anytime
           </p>
         </motion.div>
+        </div>
+        )}
+
+        {mode === 'api' && <ApiPricingPanel />}
+
+        {/* Shared account actions — same two steps whichever mode you pick */}
+        <div className="mt-8 flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-3">
+          <Link
+            href="/register"
+            className="flex items-center justify-center gap-2 rounded-2xl border border-[var(--color-primary)]/30 bg-[var(--color-primary)]/8 px-6 py-3.5 text-sm font-semibold text-[var(--color-primary)] transition hover:bg-[var(--color-primary)]/14"
+          >
+            Create account <Arrow />
+          </Link>
+          <Link
+            href="/dashboard/billing"
+            className="flex items-center justify-center gap-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] px-6 py-3.5 text-sm font-semibold text-[var(--color-text)] transition hover:border-[var(--color-primary)]/30 hover:bg-[var(--color-bg)]"
+          >
+            Add credits
+          </Link>
+        </div>
+        {/* The API panel already advertises the bonus twice — don't say it a third time */}
+        {mode === 'gb' && (
+          <p className="mt-3 text-center text-xs font-semibold text-[var(--color-accent)]">
+            {money(FIRST_TOPUP_BONUS_USD)} free credit on your first top-up
+          </p>
+        )}
       </div>
 
       {/* Sticky mini-bar */}
       <AnimatePresence>
-        {showBar && (
+        {showBar && mode === 'gb' && (
           <motion.div
             initial={{ y: '110%' }}
             animate={{ y: 0 }}
@@ -1635,10 +1853,10 @@ export default function LandingPage() {
                   <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/15 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
                 </Link>
                 <a
-                  href="#how"
+                  href="#pricing"
                   className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-7 py-3 text-sm font-medium text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] hover:border-[var(--color-primary)]/30 transition"
                 >
-                  Learn More
+                  Get Proxies
                 </a>
               </motion.div>
 
@@ -1990,13 +2208,19 @@ export default function LandingPage() {
                 ))}
               </motion.div>
 
-              <motion.div variants={fadeUp} custom={5} className="mt-8">
+              <motion.div variants={fadeUp} custom={5} className="mt-8 flex flex-wrap items-center gap-3">
                 <Link
                   href="/register"
                   className="group inline-flex items-center gap-2 rounded-full bg-[var(--color-text)] px-6 py-3 text-sm font-semibold text-[var(--color-bg)] transition hover:opacity-90"
                 >
                   <span>Get API key</span>
                   <span className="transition-transform group-hover:translate-x-0.5"><Arrow /></span>
+                </Link>
+                <Link
+                  href="/mobile-proxy-api"
+                  className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-bg)] px-6 py-3 text-sm font-medium text-[var(--color-text)] transition hover:border-[var(--color-primary)]/40"
+                >
+                  See code examples
                 </Link>
               </motion.div>
             </motion.div>
@@ -2067,8 +2291,17 @@ export default function LandingPage() {
           variants={stagger}
           className="relative mx-auto max-w-2xl text-center"
         >
-          <motion.div variants={fadeUp} custom={0} className="flex justify-center mb-6 text-white/90">
-            <Logo className="h-12 w-12" />
+          <motion.div variants={fadeUp} custom={0} className="flex justify-center mb-6">
+            {/* This band is dark in both themes, so the mark is always inverted
+                to read white — not `dark:invert` like the header logo. */}
+            <Image
+              src="/logo.png"
+              alt={`${config.brand.name} — mobile proxy service`}
+              width={1516}
+              height={429}
+              sizes="200px"
+              className="h-12 w-auto invert"
+            />
           </motion.div>
           <motion.h2 variants={fadeUp} custom={1} className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white leading-[1.05]">
             Ready to connect?
@@ -2145,6 +2378,9 @@ export default function LandingPage() {
               <ul className="mt-3 space-y-2">
                 <li>
                   <a href="/#pricing" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">Pricing</a>
+                </li>
+                <li>
+                  <Link href="/mobile-proxy-api" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">Mobile Proxy API</Link>
                 </li>
                 <li>
                   <a href="/#faq" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">FAQ</a>

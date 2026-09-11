@@ -16,6 +16,11 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- One-time welcome bonus on the user's first successful top-up. NULL means the
+-- bonus has not been granted yet; the timestamp is set atomically alongside the
+-- credit so it can never be granted twice. See migrations/005.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS first_topup_bonus_at TIMESTAMPTZ;
+
 -- Wallet links — optional 2FA via Solana or Ethereum
 CREATE TABLE IF NOT EXISTS wallet_links (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

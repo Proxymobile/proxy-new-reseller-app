@@ -282,6 +282,9 @@ export default async function CountryPage({ params }: { params: Promise<Params> 
             </div>
             <p className="mt-4 text-sm text-[var(--color-text-muted)]">
               Or head back to the <Link href="/#pricing" className="text-[var(--color-primary)] hover:underline">homepage pricing</Link> to compare all our countries.
+              Wiring {country.shortName} IPs into your own code? The{' '}
+              <Link href="/mobile-proxy-api" className="text-[var(--color-primary)] hover:underline">mobile proxy API guide</Link>{' '}
+              has copy-paste examples for curl, Python, Node and Playwright.
             </p>
           </section>
         </article>

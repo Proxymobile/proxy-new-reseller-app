@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { GATEWAY_HOST, GATEWAY_HTTP_PORT, GATEWAY_SOCKS5_PORT } from '@/lib/gateway';
 
 interface KeyData {
   id: string;
@@ -112,8 +113,8 @@ function buildProxyUrlLocal(
   if (opts.sid) tokens.push('sid', opts.sid);
   if (opts.rotation && opts.rotation !== 'none') tokens.push('rot', opts.rotation);
   const user = `${username}-${tokens.join('-')}`;
-  const port = opts.protocol === 'socks5' ? 7001 : 7000;
-  return `${opts.protocol}://${encodeURIComponent(user)}:${encodeURIComponent(pakKey)}@gw.proxies.sx:${port}`;
+  const port = opts.protocol === 'socks5' ? GATEWAY_SOCKS5_PORT : GATEWAY_HTTP_PORT;
+  return `${opts.protocol}://${encodeURIComponent(user)}:${encodeURIComponent(pakKey)}@${GATEWAY_HOST}:${port}`;
 }
 
 export default function KeysPage() {
@@ -764,7 +765,7 @@ export default function KeysPage() {
           <div>
             <p className="font-medium mb-1.5">URL Structure</p>
             <code className="block rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] p-3 text-[var(--color-primary)] break-all">
-              {'{protocol}://{username}-{pool}-{country}[-sid-{id}][-rot-{mode}]:{pak_key}@gw.proxies.sx:{port}'}
+              {'{protocol}://{username}-{pool}-{country}[-sid-{id}][-rot-{mode}]:{pak_key}@proxies.mobile:{port}'}
             </code>
           </div>
 
@@ -807,15 +808,15 @@ export default function KeysPage() {
             <p className="font-medium mb-1.5">Quick Examples</p>
             <div className="space-y-1.5">
               <code className="block rounded bg-[var(--color-bg)] p-2 text-[10px] break-all text-[var(--color-text-muted)]">
-                http://user-mbl-us-sid-abc123-rot-sticky:pak_xxx@gw.proxies.sx:7000
+                http://user-mbl-us-sid-abc123-rot-sticky:pak_xxx@proxies.mobile:7000
                 <span className="block text-[var(--color-text-muted)]/60 mt-0.5">Sticky US mobile session &quot;abc123&quot;</span>
               </code>
               <code className="block rounded bg-[var(--color-bg)] p-2 text-[10px] break-all text-[var(--color-text-muted)]">
-                socks5://user-peer-de-rot-hard:pak_xxx@gw.proxies.sx:7001
+                socks5://user-peer-de-rot-hard:pak_xxx@proxies.mobile:7001
                 <span className="block text-[var(--color-text-muted)]/60 mt-0.5">SOCKS5, German community pool, strict device pin</span>
               </code>
               <code className="block rounded bg-[var(--color-bg)] p-2 text-[10px] break-all text-[var(--color-text-muted)]">
-                http://user-mbl-pl-rot-auto10:pak_xxx@gw.proxies.sx:7000
+                http://user-mbl-pl-rot-auto10:pak_xxx@proxies.mobile:7000
                 <span className="block text-[var(--color-text-muted)]/60 mt-0.5">Polish mobile, auto-rotate every 10 min</span>
               </code>
             </div>
