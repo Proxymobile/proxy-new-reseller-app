@@ -84,13 +84,22 @@ export async function POST(request: Request) {
     }, { status: 402 });
   }
 
-  const invoiceNumber = await nextInvoiceNumber();
-
-  await query(
-    `INSERT INTO balance_transactions (user_id, amount_usd, type, reason, reference, payment_method, invoice_number)
-     VALUES ($1, $2, 'debit', $3, $4, 'balance', $5)`,
-    [session.user.id, priceUsd, `Purchase: ${label} (${gb} GB)`, planRef, invoiceNumber],
-  );
+  try {
+    const invoiceNumber = await nextInvoiceNumber();
+    await query(
+      `INSERT INTO balance_transactions (user_id, amount_usd, type, reason, reference, payment_method, invoice_number)
+       VALUES ($1, $2, 'debit', $3, $4, 'balance', $5)`,
+      [session.user.id, priceUsd, planId ? `Purchase: ${label} (${gb} GB)` : `Purchase: ${label}`, planRef, invoiceNumber],
+    );
+  } catch (err: unknown) {
+    // Never keep the money if the purchase could not be recorded
+    await query(
+      'UPDATE users SET balance_usd = balance_usd + $1, updated_at = now() WHERE id = $2',
+      [priceUsd, session.user.id],
+    );
+    console.error('[balance/purchase] Could not record transaction, debit reversed:', err instanceof Error ? err.message : err);
+    return NextResponse.json({ error: 'Could not complete the purchase — nothing was charged. Please try again.' }, { status: 500 });
+  }
 
   let customerId: string;
   try {

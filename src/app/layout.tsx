@@ -3,6 +3,8 @@ import { Inter } from 'next/font/google';
 import { config } from '@/config';
 import { SITE_URL, SITE_NAME } from '@/lib/seo';
 import './globals.css';
+import { SiteAnalytics } from '@/components/SiteAnalytics';
+import { PageBeacon } from '@/components/PageBeacon';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -14,6 +16,7 @@ export const metadata: Metadata = {
   },
   description: config.brand.tagline,
   applicationName: SITE_NAME,
+  verification: { google: process.env.GOOGLE_SITE_VERIFICATION || undefined },
   robots: {
     index: true,
     follow: true,
@@ -63,7 +66,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body className="min-h-screen antialiased">{children}</body>
+      <body className="min-h-screen antialiased">{children}<SiteAnalytics /><PageBeacon /></body>
     </html>
   );
 }

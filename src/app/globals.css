@@ -247,3 +247,27 @@ input[type="range"]::-moz-range-thumb {
 /* Hide scrollbar on horizontal mobile strip */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ─── Admin data-viz tokens (validated: light on #fff, dark on #11111a) ─── */
+.viz {
+  --viz-1: #4f46e5;
+  --viz-2: #eb6834;
+  --viz-3: #1baf7a;
+  --viz-grid: #e6e9ee;
+  --viz-axis: #c9ccd3;
+  --viz-good-text: #006300;
+  --viz-bad-text: #c02d2d;
+  --viz-good: #0ca30c;
+  --viz-warning: #fab219;
+  --viz-serious: #ec835a;
+  --viz-critical: #d03b3b;
+}
+.dark .viz {
+  --viz-1: #7073f2;
+  --viz-2: #d95926;
+  --viz-3: #199e70;
+  --viz-grid: #1c1c29;
+  --viz-axis: #33334a;
+  --viz-good-text: #0ca30c;
+  --viz-bad-text: #e66767;
+}

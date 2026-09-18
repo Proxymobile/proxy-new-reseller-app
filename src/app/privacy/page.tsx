@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   alternates: { canonical: absoluteUrl('/privacy') },
 };
 
-const UPDATED = 'July 3, 2026';
+const UPDATED = 'September 15, 2026';
 
 export default function PrivacyPage() {
   return (
@@ -70,6 +70,14 @@ export default function PrivacyPage() {
                 access, correct, export, or delete your personal data, and to object to certain
                 processing. To exercise these, contact us at the address below.
               </p>
+            </section>
+
+            <section>
+              <h2 className="text-lg font-semibold text-[var(--color-text)] mb-2">Website analytics</h2>
+              <p>When analytics is enabled and you choose to allow it, we use Google Analytics to measure visits and selected button clicks on our public website. Google processes device and browser information and uses analytics cookies to distinguish visits. This is separate from proxy traffic, whose contents we do not record.</p>
+              <p className="mt-2">Our tracking sends public page paths without URL query strings. We do not intentionally send account identifiers, access codes, wallet addresses, or payment details to Google Analytics. Advertising features are disabled. You can reject analytics or withdraw your choice using Cookie settings. Analytics cookies are configured to expire after 180 days, with renewal on subsequent visits.</p>
+              <p className="mt-2">Separately, we keep our own aggregate page-view counts for public pages: the page path, the referring website (host name only), a campaign tag if the link carried one, and whether the device is mobile or desktop, summed per day. These counts use no cookies or local storage and store no IP addresses, browser details or identifiers, so they cannot be linked to you. They are not collected if your browser sends Do Not Track or Global Privacy Control.</p>
+              <p className="mt-2">See <a href="https://policies.google.com/privacy" className="underline" rel="noreferrer">Google’s privacy policy</a> for details about its processing. Rejecting analytics does not affect your access to the service.</p>
             </section>
 
             <section>

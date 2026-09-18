@@ -8,7 +8,7 @@ import { motion, AnimatePresence, useInView, useReducedMotion } from 'framer-mot
 import { config } from '@/config';
 import { customGbPrice, customGbRatePerGB, GB_TIERS, FIRST_TOPUP_BONUS_USD } from '@/lib/pricing';
 import { COUNTRIES } from '@/lib/countries';
-import { GATEWAY_HOST, GATEWAY_HTTP_PORT, gatewayEndpoint } from '@/lib/gateway';
+import { GATEWAY_DISPLAY_HOST, GATEWAY_HTTP_PORT, gatewayDisplayEndpoint } from '@/lib/gateway';
 import { HOME_FAQS } from '@/lib/home-faqs';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
@@ -327,7 +327,7 @@ function EndpointBadge() {
         <span className="text-[10px] font-semibold uppercase tracking-[0.14em] opacity-70">Endpoint</span>
       </div>
       <p className="mt-1.5 font-mono text-xs sm:text-sm tracking-tight">
-        {GATEWAY_HOST}<span className="opacity-50">:{GATEWAY_HTTP_PORT}</span>
+        {GATEWAY_DISPLAY_HOST}<span className="opacity-50">:{GATEWAY_HTTP_PORT}</span>
       </p>
     </div>
   );
@@ -380,7 +380,7 @@ function ConfigComparison() {
                 <svg className="w-4 h-4 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
-                <span className="font-mono text-sm text-emerald-400">{gatewayEndpoint()}</span>
+                <span className="font-mono text-sm text-emerald-400">{gatewayDisplayEndpoint()}</span>
               </div>
               <p className="text-[10px] text-gray-600 mt-2 ml-6">One endpoint. Every country. Both protocols.</p>
             </div>
@@ -444,9 +444,9 @@ function UrlAnatomy() {
           </span>
         ))}
         <span className="text-gray-700">:</span>
-        <span className="text-gray-600">pak_***</span>
+        <span className="text-gray-600">pmk_***</span>
         <span className="text-gray-700">@</span>
-        <span className="text-gray-600">{gatewayEndpoint()}</span>
+        <span className="text-gray-600">{gatewayDisplayEndpoint()}</span>
       </div>
       <motion.p
         initial={{ opacity: 0 }}
@@ -468,7 +468,7 @@ function TerminalDemo() {
     { text: '$ ', cls: 'text-emerald-400' },
     { text: 'curl ', cls: 'text-gray-200' },
     { text: '-x ', cls: 'text-sky-400' },
-    { text: `http://user-mbl-us-rot-sticky:pak_***@${gatewayEndpoint()} `, cls: 'text-amber-300/80' },
+    { text: `http://user-mbl-us-rot-sticky:pmk_***@${gatewayDisplayEndpoint()} `, cls: 'text-amber-300/80' },
     { text: 'ipinfo.io', cls: 'text-gray-200' },
   ];
 
@@ -568,7 +568,7 @@ function PoolToggle() {
             {isMobile ? 'mbl' : 'peer'}
           </motion.span>
         </AnimatePresence>
-        <span>-us:pak_***@{gatewayEndpoint()}</span>
+        <span>-us:pmk_***@{gatewayDisplayEndpoint()}</span>
       </div>
 
       <AnimatePresence mode="wait">
@@ -718,7 +718,7 @@ function ApiVibeCard() {
   const codeSegments: { text: string; cls: string }[][] = [
     [{ text: 'import ', cls: 'text-fuchsia-400' }, { text: 'requests', cls: 'text-gray-200' }],
     [],
-    [{ text: 'proxy ', cls: 'text-gray-200' }, { text: '= ', cls: 'text-gray-500' }, { text: `"http://psx_live-mbl-us:pak_***@${gatewayEndpoint()}"`, cls: 'text-amber-300/80' }],
+    [{ text: 'proxy ', cls: 'text-gray-200' }, { text: '= ', cls: 'text-gray-500' }, { text: `"http://pm_live-mbl-us:pmk_***@${gatewayDisplayEndpoint()}"`, cls: 'text-amber-300/80' }],
     [
       { text: 'r ', cls: 'text-gray-200' },
       { text: '= ', cls: 'text-gray-500' },
@@ -842,7 +842,7 @@ function DashboardPreview() {
             <p className="text-[9px] font-medium text-[var(--color-text)] mb-2">Proxy URL</p>
             <div className="rounded bg-[var(--color-bg)] border border-[var(--color-border)] px-2 py-1.5">
               <code className="text-[8px] text-[var(--color-primary)] break-all">
-                {`http://psx_69fb...-mbl-us-rot-sticky:pak_a8f2...@${gatewayEndpoint()}`}
+                {`http://pm_69fb...-mbl-us-rot-sticky:pmk_a8f2...@${gatewayDisplayEndpoint()}`}
               </code>
             </div>
           </div>

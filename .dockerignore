@@ -1,0 +1,16 @@
+node_modules
+.next
+.git
+.env
+.env.*
+**/.env
+**/.env.*
+*.tsbuildinfo
+.claude
+.codex
+.agents
+docs
+deploy
+*.log
+proxymobile-reddit-ad.png
+pricing-redesign.html

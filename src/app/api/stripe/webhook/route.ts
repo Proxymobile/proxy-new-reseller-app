@@ -50,14 +50,44 @@ export async function POST(request: Request) {
     );
 
     if (event.type === 'checkout.session.completed') {
-      const session = event.data.object as Stripe.Checkout.Session;
+      const signed = event.data.object as Stripe.Checkout.Session;
+
+      // Re-fetch the session from Stripe instead of trusting the event body.
+      //
+      // The payload carries both WHO to credit (client_reference_id) and HOW
+      // MUCH (metadata.amount), so a signature check alone makes the signing
+      // secret equivalent to a mint: anyone holding it could forge a paid
+      // deposit for any user, for any amount. Stripe's own copy is the source
+      // of truth — a forged session simply does not exist there — so this
+      // turns a leaked whsec_ from "free money" into "rejected request".
+      let session: Stripe.Checkout.Session;
+      try {
+        session = await stripe.checkout.sessions.retrieve(signed.id);
+      } catch (err: unknown) {
+        const code = (err as { code?: string } | null)?.code;
+        if (code === 'resource_missing') {
+          // No such session on this account: the event was fabricated.
+          console.error('[stripe/webhook] Rejected event for unknown session', signed.id);
+          return NextResponse.json({ error: 'Unknown session' }, { status: 400 });
+        }
+        // Transient failure — rethrow so the row is cleaned up and Stripe retries.
+        throw err;
+      }
+
+      // Only a genuinely paid session credits a balance.
+      if (session.payment_status !== 'paid') {
+        console.warn('[stripe/webhook] Session %s is %s, not crediting', session.id, session.payment_status);
+        return NextResponse.json({ received: true });
+      }
+
       const userId = session.client_reference_id;
 
       if (!userId) {
         return NextResponse.json({ error: 'Missing client_reference_id' }, { status: 400 });
       }
 
-      const amount = Number(session.metadata?.amount ?? (session.amount_total ?? 0) / 100);
+      // amount_total is what Stripe actually collected, in the smallest unit.
+      const amount = (session.amount_total ?? 0) / 100;
       if (amount <= 0) {
         return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
       }

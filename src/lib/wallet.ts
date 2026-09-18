@@ -4,6 +4,9 @@ import { verifyMessage } from 'viem';
 const CHALLENGE_TTL = 5 * 60 * 1000; // 5 minutes
 
 function getSecret(): string {
+  if (!process.env.AUTH_SECRET && process.env.NODE_ENV === 'production') {
+    throw new Error('AUTH_SECRET is required in production');
+  }
   return process.env.AUTH_SECRET || 'fallback-dev-secret';
 }
 

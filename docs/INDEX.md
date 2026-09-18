@@ -12,7 +12,7 @@
 | **Stack** | Next.js 15.3 + PostgreSQL 17 + Auth.js v5 + Stripe + Caddy |
 | **Deploy** | Docker Compose (3 containers: app, db, caddy) |
 | **Build** | 34 routes, all passing, standalone output |
-| **Auth** | Access code + Admin password + ETH wallet |
+| **Auth** | Access code + Email/password (staff) + ETH wallet |
 | **SSH** | `ssh -i ~/.ssh/proxy_reseller_deploy root@72.62.117.94` |
 
 ---
@@ -27,10 +27,12 @@
 - [ARCHITECTURE.md](./ARCHITECTURE.md) -- System design, data flow, trust boundaries
 - [SCHEMA.md](./SCHEMA.md) -- Database tables, indexes, constraints
 - [AUTH.md](./AUTH.md) -- Authentication flow, access code system, roles
+- [ADMIN-LOGINS.md](./ADMIN-LOGINS.md) -- Email + password staff logins, creating the first admin, retiring ADMIN_PASSWORD
 
 ### Operations
 - [DEPLOY.md](./DEPLOY.md) -- VPS setup, Docker Compose, Caddy, deployment workflow
 - [ENV.md](./ENV.md) -- Environment variables reference
+- [SEO-TRACKER.md](./SEO-TRACKER.md) -- Search Console setup, how SEO data is cached, scheduling the sync
 - [RUNBOOK.md](./RUNBOOK.md) -- Common ops tasks, troubleshooting, logs
 
 ### Security

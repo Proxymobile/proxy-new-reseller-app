@@ -12,6 +12,8 @@ rsync -avz --delete \
   --exclude='.next' \
   --exclude='.env' \
   --exclude='.env.local' \
+  --exclude='.env.*' \
+  --exclude='*.tsbuildinfo' \
   -e "ssh -i $DEPLOY_KEY" \
   "$(dirname "$0")/../" \
   "$SERVER:$APP_DIR/"
@@ -21,37 +23,22 @@ ssh -i "$DEPLOY_KEY" "$SERVER" bash -s <<'REMOTE'
 set -euo pipefail
 cd /opt/proxy-reseller
 
-# Generate DB password if not exists
+# Production credentials must be configured before a release.
 if [ ! -f .env ]; then
-  DB_PASS=$(openssl rand -hex 16)
-  AUTH_SECRET=$(openssl rand -hex 32)
-  cat > .env <<EOF
-DATABASE_URL=postgresql://proxy_reseller:${DB_PASS}@db:5432/proxy_reseller
-AUTH_SECRET=${AUTH_SECRET}
-AUTH_URL=https://proxymobile.shop
-ADMIN_EMAILS=admin@proxymobile.shop
-PROXIES_SX_API_KEY=psx_placeholder
-PROXIES_SX_USERNAME=placeholder
-STRIPE_SECRET_KEY=sk_test_placeholder
-STRIPE_WEBHOOK_SECRET=whsec_placeholder
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_placeholder
-EMAIL_FROM=noreply@proxyhub.example
-EOF
-  echo "DB_PASSWORD=${DB_PASS}" > deploy/.env.db
-  echo "==> Generated .env with DB_PASSWORD=${DB_PASS}"
-else
-  echo "==> .env already exists, skipping generation"
+  echo "Configure /opt/proxy-reseller/.env with production credentials before deploying." >&2
+  exit 1
 fi
 
 # Extract DB_PASSWORD for compose
 export DB_PASSWORD=$(grep DATABASE_URL .env | sed 's/.*:\(.*\)@.*/\1/')
 
 cd deploy
-docker compose -f docker-compose.prod.yml build --no-cache
-docker compose -f docker-compose.prod.yml up -d
+docker compose --env-file ../.env -f docker-compose.prod.yml build --no-cache
+# -T and </dev/null: this script arrives on stdin, and an interactive `run`
+# would swallow the remaining lines, silently skipping `up` below.
+docker compose --env-file ../.env -f docker-compose.prod.yml run -T --rm --no-deps app node scripts/check-production-env.mjs < /dev/null
+docker compose --env-file ../.env -f docker-compose.prod.yml up -d --wait --wait-timeout 120
 
-echo "==> Waiting for services..."
-sleep 5
-docker compose -f docker-compose.prod.yml ps
+docker compose --env-file ../.env -f docker-compose.prod.yml ps
 echo "==> Deployment complete!"
 REMOTE

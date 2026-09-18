@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: proxy_reseller
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
       POSTGRES_DB: proxy_reseller
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -21,13 +21,16 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_GA_MEASUREMENT_ID: ${NEXT_PUBLIC_GA_MEASUREMENT_ID-G-KNF0HKV37K}
+        GOOGLE_SITE_VERIFICATION: ${GOOGLE_SITE_VERIFICATION:-}
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"
     env_file:
       - ../.env
     environment:
-      DATABASE_URL: postgresql://proxy_reseller:${DB_PASSWORD}@db:5432/proxy_reseller
+      DATABASE_URL: postgresql://proxy_reseller:${DB_PASSWORD:?DB_PASSWORD must be set}@db:5432/proxy_reseller
       NODE_ENV: production
     depends_on:
       db:
