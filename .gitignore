@@ -2,5 +2,11 @@ node_modules/
 .next/
 .env
 .env.local
+.env.*
+!.env.example
+deploy/.env.db
 *.tsbuildinfo
 next-env.d.ts
+
+# Agent scratch output, not part of the app
+Claude outputs/
