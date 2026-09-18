@@ -11,7 +11,7 @@
  */
 
 import { config } from '@/config';
-import { GATEWAY_HOST, GATEWAY_HTTP_PORT, GATEWAY_SOCKS5_PORT } from '@/lib/gateway';
+import { GATEWAY_DISPLAY_HOST, GATEWAY_HTTP_PORT, GATEWAY_SOCKS5_PORT } from '@/lib/gateway';
 
 export const API_TITLE =
   'Mobile Proxy API — One Proxy URL, Any Language | ProxyMobile';
@@ -44,14 +44,15 @@ export const VIBE_POINTS = [
   },
 ];
 
-/** Copy-paste snippets. The gateway host comes from src/lib/gateway.ts so the
- *  examples always name the host that actually routes; USERNAME and PAK_KEY
- *  stay as placeholders — we never publish live credentials here. */
+/** Copy-paste snippets. This is marketing copy, so it names the brand host
+ *  (GATEWAY_DISPLAY_HOST) rather than the routing host — see src/lib/gateway.ts.
+ *  USERNAME and PAK_KEY stay as placeholders, so nothing here runs as-is; the
+ *  real host a customer connects to is the one shown in /dashboard/keys. */
 export const CODE_SAMPLES = [
   {
     label: 'curl',
     lang: 'bash',
-    code: `export PROXY_URL="http://USERNAME-mbl-us-rot-sticky:PAK_KEY@${GATEWAY_HOST}:${GATEWAY_HTTP_PORT}"
+    code: `export PROXY_URL="http://USERNAME-mbl-us-rot-sticky:PAK_KEY@${GATEWAY_DISPLAY_HOST}:${GATEWAY_HTTP_PORT}"
 
 curl -x "$PROXY_URL" https://api.ipify.org?format=json`,
   },
@@ -120,6 +121,12 @@ export const ROTATION_MODES = [
   { mode: 'none', body: 'Default gateway behaviour, no rotation directive.' },
 ];
 
+/**
+ * Ordered deliberately. Ad verification, pricing, SERP and developer
+ * automation lead; we do not advertise multi-account social automation as a
+ * headline use case, because that traffic converts into chargebacks and
+ * compliance load rather than revenue. See src/lib/use-cases.ts.
+ */
 export const USE_CASES = [
   {
     heading: 'Ad verification',
@@ -132,10 +139,6 @@ export const USE_CASES = [
   {
     heading: 'SERP and rank tracking',
     body: 'Search results differ by country, carrier and device class. Querying through mobile IPs in the market you care about gives you the ranking a real user in that market sees, rather than a datacentre approximation of it.',
-  },
-  {
-    heading: 'Social platform automation',
-    body: 'Manage multiple accounts without collapsing them onto one IP fingerprint. Sticky sessions keyed by -sid- give each account a stable device, which is what these platforms expect from a phone-based user.',
   },
   {
     heading: 'AI agents and browser automation',

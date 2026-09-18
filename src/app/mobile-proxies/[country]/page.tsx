@@ -7,6 +7,7 @@ import { GB_TIERS } from '@/lib/pricing';
 import { proxies } from '@/lib/proxies';
 import { COUNTRIES, getCountry, siblingCountries } from '@/lib/countries';
 import { JsonLd } from '@/components/JsonLd';
+import { UseCaseLinks } from '@/components/UseCaseLinks';
 import {
   SITE_URL,
   SITE_NAME,
@@ -31,7 +32,10 @@ export async function generateMetadata({ params }: { params: Promise<Params> }):
   return {
     title: { absolute: country.title },
     description: country.description,
-    alternates: { canonical: url },
+    alternates: {
+      canonical: url,
+      languages: { en: url, 'zh-Hans': absoluteUrl(`/zh/mobile-proxies/${country.slug}`), 'x-default': url },
+    },
     openGraph: {
       title: country.title,
       description: country.description,
@@ -293,7 +297,9 @@ export default async function CountryPage({ params }: { params: Promise<Params> 
       {/* Footer */}
       <footer className="border-t border-[var(--color-border)] px-6 py-10 bg-[var(--color-surface)]">
         <div className="mx-auto max-w-5xl">
-          <nav aria-label="Mobile proxy locations">
+          <UseCaseLinks />
+
+          <nav aria-label="Mobile proxy locations" className="mt-8 border-t border-[var(--color-border)] pt-6">
             <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text)]">
               All Mobile Proxy Locations
             </h2>

@@ -5,6 +5,7 @@ import { config } from '@/config';
 import { GB_TIERS, FIRST_TOPUP_BONUS_USD } from '@/lib/pricing';
 import { COUNTRIES } from '@/lib/countries';
 import { JsonLd } from '@/components/JsonLd';
+import { UseCaseLinks } from '@/components/UseCaseLinks';
 import {
   SITE_URL,
   SITE_NAME,
@@ -44,7 +45,10 @@ export const metadata: Metadata = {
     'socks5 mobile proxy',
     'pay per gb proxy',
   ],
-  alternates: { canonical: pageUrl },
+  alternates: {
+    canonical: pageUrl,
+    languages: { en: pageUrl, 'zh-Hans': absoluteUrl('/zh/mobile-proxy-api'), 'x-default': pageUrl },
+  },
   openGraph: {
     title: API_TITLE,
     description: API_DESCRIPTION,
@@ -345,7 +349,9 @@ export default function MobileProxyApiPage() {
 
       <footer className="border-t border-[var(--color-border)] px-6 py-10 bg-[var(--color-surface)]">
         <div className="mx-auto max-w-5xl">
-          <nav aria-label="Mobile proxy locations">
+          <UseCaseLinks />
+
+          <nav aria-label="Mobile proxy locations" className="mt-8 border-t border-[var(--color-border)] pt-6">
             <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text)]">
               All Mobile Proxy Locations
             </h2>
