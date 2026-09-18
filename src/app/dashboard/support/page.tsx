@@ -1,230 +1,76 @@
-'use client';
-
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { auth } from '@/lib/auth';
 import { config } from '@/config';
+import { getAccountUser, getCustomerKey } from '@/lib/customer-data';
+import { Card, PageHeader } from '@/components/panel/ui';
+import { MessageComposer } from './MessageComposer';
 
-const FAQS = [
-  {
-    q: 'How do I create my first proxy?',
-    a: 'Go to Purchase, pick a country and plan, and click Buy. Your access key activates instantly. Then visit Proxy Keys to generate connection URLs with country, pool type, and rotation settings.',
-  },
-  {
-    q: 'What\'s the difference between Mobile and Residential pools?',
-    a: 'Mobile pools use real 4G/5G SIM-connected modems with carrier-assigned IPs (highest trust). Residential pools use Android devices on home ISP connections (volume-friendly). Both pools are available on every plan and accessed through the same gateway.',
-  },
-  {
-    q: 'How do I switch between countries?',
-    a: 'Change two characters in your proxy URL. Replace `mbl-us` with `mbl-de` and your next request exits through Germany. No reconnection or new credentials needed.',
-  },
-  {
-    q: 'What happens if my traffic runs out?',
-    a: 'Your key stops accepting connections — no surprise charges, no overage fees. Top up from the Billing or Purchase page to continue.',
-  },
-  {
-    q: 'Do you log my proxy traffic?',
-    a: 'We track bandwidth usage for billing only. We do not log the URLs you visit or the content of your traffic.',
-  },
-  {
-    q: 'Can I get a refund?',
-    a: 'We offer a 7-day money-back guarantee on first-time purchases. Contact support and we\'ll process it within 24 hours.',
-  },
-  {
-    q: 'How do I rotate my key secret?',
-    a: 'On the Proxy Keys page, click "Rotate Secret" in the key status bar. This issues a new pak_ key — old URLs will stop working immediately.',
-  },
-  {
-    q: 'Are these IPs really mobile?',
-    a: 'Yes. Mobile IPs come from physical 4G/5G modems with real SIM cards from carriers. They are the same kind of IPs your phone gets. Not datacenter, not virtual.',
-  },
+const FAQS: [string, string][] = [
+  ['How do I start using my proxies?', 'Buy bandwidth, then open Proxy setup. Pick a country and rotation, press Generate and paste the URL into your tool — it works in anything that supports an HTTP or SOCKS5 proxy.'],
+  ['My requests fail or time out. What should I check?', 'Make sure your key is Active on the Overview page and has data left. Check that the country you picked shows devices online. A 407 error means the username or key is wrong — copy a fresh URL. If you just rotated your secret, old URLs no longer work.'],
+  ['What is the difference between Mobile and Residential?', 'Mobile uses real SIM cards in 4G/5G modems — the highest-trust IPs. Residential uses home internet connections from Android devices and suits high-volume work. Both use the same key and gateway.'],
+  ['How do I keep the same IP?', 'Use Sticky rotation with a session ID (Proxy setup does this for you). Reusing the same session ID returns you to the same device for as long as the carrier allows.'],
+  ['How do I get a new IP?', 'Use a different session ID, or pick “Every 10 min” rotation to change automatically.'],
+  ['What happens when my data runs out or expires?', 'Connections stop — nothing is charged automatically. Buy more bandwidth and the same key and URLs start working again. Every purchase extends the expiry by 30 days.'],
+  ['Do you log my traffic?', 'We record how much bandwidth you use for billing. We do not log the content of your traffic or the URLs you visit.'],
+  ['Can I get a refund?', 'First purchases have a 7-day money-back guarantee. Send us a message with your account ID and we reply within 24 hours.'],
 ];
 
-export default function SupportPage() {
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
-  const [contact, setContact] = useState({ subject: '', message: '' });
-  const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
+export default async function SupportPage() {
+  const session = await auth();
+  if (!session?.user?.id) redirect('/login');
+  const [user, { key }] = await Promise.all([getAccountUser(session.user.id), getCustomerKey(session.user.id)]);
+  if (!user) redirect('/login');
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!contact.subject.trim() || !contact.message.trim()) return;
-    setSending(true);
-    // Mock send — in production would POST to /api/support/contact
-    setTimeout(() => {
-      setSending(false);
-      setSent(true);
-      setContact({ subject: '', message: '' });
-      setTimeout(() => setSent(false), 4000);
-    }, 800);
-  }
+  const diagnostics = [
+    `Account ID: ${user.id}`,
+    `Key ID: ${key?.id ?? 'none'}`,
+    `Key status: ${!key ? 'no key' : key.expired ? 'expired' : !key.enabled ? 'paused' : 'active'}`,
+    key?.capGb ? `Data: ${key.usedGb.toFixed(2)} of ${key.capGb} GB used` : null,
+  ].filter(Boolean).join('\n');
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--color-text)]">Support</h1>
-        <p className="text-sm text-[var(--color-text-muted)] mt-1">
-          Get help with your account, billing, or proxy setup.
-        </p>
+    <div>
+      <PageHeader title="Help & support" subtitle="Answers to common questions, and a direct line to our team." />
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <Channel title="Email" body="Replies within 24 hours" action={config.brand.supportEmail} href={`mailto:${config.brand.supportEmail}`} />
+        <Channel title="Setup guide" body="Code examples for curl, Python, Node and Playwright" action="Open the API guide" href="/mobile-proxy-api" />
+        <Channel title="Generate a proxy" body="Build connection strings for any country" action="Open Proxy setup" href="/dashboard/keys" />
       </div>
 
-      {/* Contact channels */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <ContactChannel
-          title="Email Support"
-          desc="Response within 24 hours"
-          action={config.brand.supportEmail}
-          href={`mailto:${config.brand.supportEmail}`}
-          icon={
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l9 6 9-6M3 8v10a2 2 0 002 2h14a2 2 0 002-2V8M3 8l9-5 9 5" />
-            </svg>
-          }
-        />
-        <ContactChannel
-          title="Telegram"
-          desc="Live chat with our team"
-          action="@proxymobile_support"
-          href="https://t.me/proxymobile_support"
-          icon={
-            <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z" />
-            </svg>
-          }
-        />
-        <ContactChannel
-          title="Documentation"
-          desc="Setup guides and integrations"
-          action="View docs"
-          href="/dashboard/keys"
-          icon={
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.7}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.25278V19.2528M12 6.25278C10.8321 5.47686 9.24649 5 7.5 5C5.75351 5 4.16789 5.47686 3 6.25278V19.2528C4.16789 18.4769 5.75351 18 7.5 18C9.24649 18 10.8321 18.4769 12 19.2528M12 6.25278C13.1679 5.47686 14.7535 5 16.5 5C18.2465 5 19.8321 5.47686 21 6.25278V19.2528C19.8321 18.4769 18.2465 18 16.5 18C14.7535 18 13.1679 18.4769 12 19.2528" />
-            </svg>
-          }
-        />
-      </div>
-
-      {/* FAQ */}
-      <div className="rounded-2xl border border-[var(--color-border)] bg-white">
-        <div className="p-6 border-b border-[var(--color-border)]">
-          <h2 className="text-base font-semibold text-[var(--color-text)]">Frequently Asked Questions</h2>
-          <p className="text-xs text-[var(--color-text-muted)] mt-1">
-            Quick answers to common questions about ProxyMobile.
-          </p>
-        </div>
-        <div className="px-6">
-          {FAQS.map((faq, i) => {
-            const open = openFaq === i;
-            return (
-              <div key={i} className="border-b border-[var(--color-border)] last:border-0">
-                <button
-                  onClick={() => setOpenFaq(open ? null : i)}
-                  className="w-full flex items-center justify-between py-4 text-left group"
-                >
-                  <span className="text-sm font-medium text-[var(--color-text)] pr-8 group-hover:text-[var(--color-primary)] transition">
-                    {faq.q}
-                  </span>
-                  <motion.span
-                    animate={{ rotate: open ? 45 : 0 }}
-                    className="text-[var(--color-text-muted)] text-lg shrink-0 leading-none"
-                  >
-                    +
-                  </motion.span>
-                </button>
-                <AnimatePresence>
-                  {open && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.25 }}
-                      className="overflow-hidden"
-                    >
-                      <p className="pb-4 text-sm text-[var(--color-text-muted)] leading-relaxed">{faq.a}</p>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Contact form */}
-      <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
-        <h2 className="text-base font-semibold text-[var(--color-text)]">Contact Support</h2>
-        <p className="text-xs text-[var(--color-text-muted)] mt-1 mb-5">
-          Send us a message and we&apos;ll get back within 24 hours.
-        </p>
-
-        <form onSubmit={handleSubmit} className="space-y-4 max-w-2xl">
-          <div>
-            <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">
-              Subject
-            </label>
-            <input
-              type="text"
-              value={contact.subject}
-              onChange={(e) => setContact({ ...contact, subject: e.target.value })}
-              required
-              placeholder="What can we help with?"
-              className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2.5 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]/50 focus:outline-none focus:border-[var(--color-primary)]"
-            />
+      <div className="mt-4 grid gap-4 lg:grid-cols-5">
+        <Card title="Frequently asked questions" className="lg:col-span-3">
+          <div className="divide-y divide-[var(--color-border)]">
+            {FAQS.map(([q, a]) => (
+              <details key={q} className="group py-3">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-medium text-[var(--color-text)]">
+                  {q}
+                  <span aria-hidden className="text-[var(--color-text-muted)] transition group-open:rotate-45">+</span>
+                </summary>
+                <p className="mt-2 text-sm leading-relaxed text-[var(--color-text-muted)]">{a}</p>
+              </details>
+            ))}
           </div>
-          <div>
-            <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1.5">
-              Message
-            </label>
-            <textarea
-              value={contact.message}
-              onChange={(e) => setContact({ ...contact, message: e.target.value })}
-              required
-              rows={5}
-              placeholder="Describe your issue or question…"
-              className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2.5 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]/50 focus:outline-none focus:border-[var(--color-primary)] resize-y"
-            />
-          </div>
+        </Card>
 
-          <AnimatePresence>
-            {sent && (
-              <motion.div
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700"
-              >
-                Message sent! We&apos;ll get back to you within 24 hours.
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <button
-            type="submit"
-            disabled={sending || !contact.subject.trim() || !contact.message.trim()}
-            className="rounded-lg bg-[var(--color-primary)] px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition disabled:opacity-40 shadow-sm shadow-[var(--color-primary)]/20"
-          >
-            {sending ? 'Sending…' : 'Send Message'}
-          </button>
-        </form>
+        <Card title="Message us" subtitle="Opens your email app with the details filled in" className="lg:col-span-2">
+          <MessageComposer to={config.brand.supportEmail} diagnostics={diagnostics} />
+        </Card>
       </div>
     </div>
   );
 }
 
-function ContactChannel({ title, desc, action, href, icon }: { title: string; desc: string; action: string; href: string; icon: React.ReactNode }) {
-  return (
-    <a
-      href={href}
-      target={href.startsWith('http') ? '_blank' : undefined}
-      rel={href.startsWith('http') ? 'noopener noreferrer' : undefined}
-      className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 hover:border-[var(--color-primary)]/30 hover:shadow-sm transition-all group"
-    >
-      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)] mb-3">
-        {icon}
-      </div>
+function Channel({ title, body, action, href }: { title: string; body: string; action: string; href: string }) {
+  const external = href.startsWith('mailto:');
+  const inner = (
+    <div className="h-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 transition hover:border-[var(--color-primary)]/40">
       <p className="text-sm font-semibold text-[var(--color-text)]">{title}</p>
-      <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{desc}</p>
-      <p className="text-xs text-[var(--color-primary)] font-medium mt-2 group-hover:underline">{action} →</p>
-    </a>
+      <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">{body}</p>
+      <p className="mt-3 truncate text-xs font-medium text-[var(--color-primary)]">{action} →</p>
+    </div>
   );
+  return external ? <a href={href} className="block">{inner}</a> : <Link href={href} className="block">{inner}</Link>;
 }

@@ -1,283 +1,125 @@
-'use client';
-
-import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { auth } from '@/lib/auth';
+import { getAccountUser, getMoneyMonthly, getMoneySummary, getTransactions, type TxFilter } from '@/lib/customer-data';
 import { FIRST_TOPUP_BONUS_USD } from '@/lib/pricing';
+import { Alert, Card, Empty, PageHeader, StatTile, Td, Th } from '@/components/panel/ui';
+import { TimeChart } from '@/components/panel/TimeChart';
+import { gb, int, usd } from '@/components/panel/format';
+import { AddFunds, RedeemPromo } from './BillingForms';
 
-interface Transaction {
-  id: string;
-  amount_usd: string;
-  type: 'credit' | 'debit';
-  reason: string;
-  reference: string | null;
-  payment_method: string;
-  invoice_number: string | null;
-  created_at: string;
-}
+const FILTERS: [TxFilter, string][] = [['all', 'All'], ['deposits', 'Deposits'], ['purchases', 'Purchases'], ['credits', 'Bonuses & credits']];
+const METHOD: Record<string, string> = { stripe: 'Card (Stripe)', crypto: 'Crypto', balance: 'Balance', admin: 'Support credit', system: 'Automatic' };
+const PAGE = 25;
 
-interface Stats {
-  totalDeposits: number;
-  totalPurchases: number;
-  txCount: number;
-  balance: number;
-}
+export default async function BillingPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const session = await auth();
+  if (!session?.user?.id) redirect('/login');
+  const sp = await searchParams;
+  const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+  const filter = (FILTERS.find(([k]) => k === one(sp.filter))?.[0] ?? 'all') as TxFilter;
+  const page = Math.max(1, Number(one(sp.page)) || 1);
+  const deposit = one(sp.deposit);
+  const presetAmount = Number(one(sp.amount)) || null;
 
-const DEPOSIT_PRESETS = [25, 50, 100, 250, 500, 1000];
-
-const METHOD_LABELS: Record<string, string> = {
-  stripe: 'Stripe',
-  admin: 'Admin',
-  balance: 'Balance',
-  crypto: 'Crypto',
-  system: 'System',
-};
-
-export default function BillingPage() {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [depositAmount, setDepositAmount] = useState('');
-  const [depositLoading, setDepositLoading] = useState(false);
-  const [promoCode, setPromoCode] = useState('');
-  const [promoLoading, setPromoLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
-  const load = useCallback(async () => {
-    const res = await fetch('/api/billing');
-    if (res.ok) {
-      const data = await res.json();
-      setTransactions(data.transactions);
-      setStats(data.stats);
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    load();
-    // Check for Stripe redirect
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('deposit') === 'success') {
-      setMessage({ type: 'success', text: 'Deposit successful! Your balance has been credited.' });
-      window.history.replaceState({}, '', '/dashboard/billing');
-    } else if (params.get('deposit') === 'cancelled') {
-      setMessage({ type: 'error', text: 'Deposit cancelled.' });
-      window.history.replaceState({}, '', '/dashboard/billing');
-    }
-  }, [load]);
-
-  async function handleStripeDeposit() {
-    const amount = Number(depositAmount);
-    if (!amount || amount < 5 || amount > 10000) {
-      setMessage({ type: 'error', text: 'Amount must be between $5 and $10,000' });
-      return;
-    }
-    setDepositLoading(true);
-    setMessage(null);
-    try {
-      const res = await fetch('/api/stripe/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Failed to create checkout');
-      if (data.url) window.location.href = data.url;
-    } catch (err: unknown) {
-      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Deposit failed' });
-      setDepositLoading(false);
-    }
-  }
-
-  async function handleRedeemPromo() {
-    if (!promoCode.trim()) return;
-    setPromoLoading(true);
-    setMessage(null);
-    try {
-      const res = await fetch('/api/promo/redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: promoCode.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Failed to redeem code');
-      const text = data.grantedGb
-        ? `Trial activated — ${data.grantedGb >= 1 ? `${data.grantedGb} GB` : `${Math.round(data.grantedGb * 1024)} MB`} added to your key. Visit Keys to start.`
-        : `Promo applied — $${Number(data.creditedUsd).toFixed(2)} added to your balance.`;
-      setMessage({ type: 'success', text });
-      setPromoCode('');
-      await load();
-    } catch (err: unknown) {
-      setMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to redeem code' });
-    }
-    setPromoLoading(false);
-  }
-
-  if (loading) return <p className="text-[var(--color-text-muted)]">Loading...</p>;
+  const uid = session.user.id;
+  const [user, money, series, txs] = await Promise.all([
+    getAccountUser(uid), getMoneySummary(uid), getMoneyMonthly(uid, 12),
+    getTransactions(uid, { filter, limit: PAGE, offset: (page - 1) * PAGE }),
+  ]);
+  if (!user) redirect('/login');
+  const pages = Math.max(1, Math.ceil(txs.total / PAGE));
+  const firstDeposit = money.deposited === 0;
+  const hasActivity = series.some((s) => s.added || s.spent);
+  const href = (f: TxFilter, p = 1) => `/dashboard/billing?${new URLSearchParams({ ...(f !== 'all' ? { filter: f } : {}), ...(p > 1 ? { page: String(p) } : {}) })}`;
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-[var(--color-text)] mb-6">Billing</h1>
+      <PageHeader title="Billing" subtitle="Add funds, redeem codes and download your transaction history." />
 
-      {message && (
-        <div className={`rounded-lg border p-3 mb-4 text-sm ${
-          message.type === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-600'
-        }`}>
-          {message.text}
-          <button onClick={() => setMessage(null)} className="float-right text-xs opacity-60 hover:opacity-100">&times;</button>
-        </div>
-      )}
+      {deposit === 'success' && <div className="mb-4"><Alert level="good" title="Payment received">Your balance updates as soon as Stripe confirms the payment — usually within a few seconds. Refresh if you don&apos;t see it yet.</Alert></div>}
+      {deposit === 'cancelled' && <div className="mb-4"><Alert level="neutral" title="Payment cancelled">Nothing was charged.</Alert></div>}
 
-      {/* Stats */}
-      {stats && (
-        <div className="grid gap-4 md:grid-cols-4 mb-6">
-          <StatCard label="Balance" value={`$${stats.balance.toFixed(2)}`} />
-          <StatCard label="Total Deposited" value={`$${stats.totalDeposits.toFixed(2)}`} accent="green" />
-          <StatCard label="Total Spent" value={`$${stats.totalPurchases.toFixed(2)}`} accent="red" />
-          <StatCard label="Transactions" value={String(stats.txCount)} />
-        </div>
-      )}
-
-      {/* Deposit */}
-      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 mb-6">
-        <h2 className="text-sm font-semibold text-[var(--color-text)] mb-3">Add Funds</h2>
-        {stats && stats.totalDeposits === 0 && (
-          <p className="mb-3 inline-flex items-center gap-1.5 rounded-lg bg-[var(--color-accent)]/10 px-2.5 py-1.5 text-xs font-semibold text-[var(--color-accent)]">
-            Welcome bonus: ${FIRST_TOPUP_BONUS_USD} free credit is added on top of your first deposit.
-          </p>
-        )}
-        <div className="flex flex-wrap gap-2 mb-3">
-          {DEPOSIT_PRESETS.map((amt) => (
-            <button
-              key={amt}
-              onClick={() => setDepositAmount(String(amt))}
-              className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
-                depositAmount === String(amt)
-                  ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5 text-[var(--color-primary)]'
-                  : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]'
-              }`}
-            >
-              ${amt}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-2">
-          <div className="relative flex-1 max-w-[200px]">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[var(--color-text-muted)]">$</span>
-            <input
-              type="number"
-              min={5}
-              max={10000}
-              step="0.01"
-              value={depositAmount}
-              onChange={(e) => setDepositAmount(e.target.value)}
-              placeholder="0.00"
-              className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] pl-7 pr-3 py-2 text-sm text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]"
-            />
-          </div>
-          <button
-            onClick={handleStripeDeposit}
-            disabled={depositLoading || !depositAmount || Number(depositAmount) < 5}
-            className="rounded-lg bg-[var(--color-primary)] px-5 py-2 text-sm font-medium text-white hover:opacity-90 transition disabled:opacity-40"
-          >
-            {depositLoading ? 'Redirecting...' : 'Pay with Stripe'}
-          </button>
-        </div>
-        <p className="text-[10px] text-[var(--color-text-muted)] mt-2">
-          Minimum deposit: $5. Funds are credited instantly after payment.
-          {stats && stats.totalDeposits === 0 && ` Your $${FIRST_TOPUP_BONUS_USD} welcome bonus lands with it.`}
-        </p>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatTile label="Balance" value={usd(user.balance)} hint="available for bandwidth" />
+        <StatTile label="Deposited" value={usd(money.deposited)} hint="by card or crypto" />
+        <StatTile label="Bonuses & credits" value={usd(money.credits)} hint={money.refunds ? `plus ${usd(money.refunds)} refunded` : 'welcome bonus, promo codes'} />
+        <StatTile label="Spent on bandwidth" value={usd(money.spent)} hint={`${gb(money.gbBought)} across ${int(money.orders)} order${money.orders === 1 ? '' : 's'}`} />
       </div>
 
-      {/* Promo Code */}
-      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 mb-6">
-        <h2 className="text-sm font-semibold text-[var(--color-text)] mb-3">Redeem Promo Code</h2>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={promoCode}
-            onChange={(e) => setPromoCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 32))}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleRedeemPromo(); }}
-            placeholder="e.g. START200"
-            spellCheck={false}
-            autoComplete="off"
-            className="flex-1 max-w-[200px] rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2 text-sm text-[var(--color-text)] font-mono tracking-wider focus:outline-none focus:border-[var(--color-primary)]"
+      <div className="mt-4 grid gap-4 lg:grid-cols-5">
+        <Card title="Add funds" subtitle="Secure card payment via Stripe" className="lg:col-span-3">
+          <AddFunds firstDeposit={firstDeposit} bonus={FIRST_TOPUP_BONUS_USD} preset={presetAmount} />
+        </Card>
+        <div id="promo" className="scroll-mt-24 lg:col-span-2">
+          <Card title="Redeem a promo code" subtitle="Free credit or trial bandwidth">
+            <RedeemPromo />
+          </Card>
+        </div>
+      </div>
+
+      <Card title="Money in and out" subtitle="Last 12 months, per month" className="mt-4">
+        {hasActivity ? (
+          <TimeChart
+            data={series.map((s) => ({ day: s.day, added: s.added, spent: s.spent }))}
+            series={[{ key: 'added', label: 'Added', slot: 1 }, { key: 'spent', label: 'Spent', slot: 2 }]}
+            period="month"
+            format="usd"
+            height={200}
           />
-          <button
-            onClick={handleRedeemPromo}
-            disabled={promoLoading || !promoCode.trim()}
-            className="rounded-lg bg-[var(--color-primary)] px-5 py-2 text-sm font-medium text-white hover:opacity-90 transition disabled:opacity-40"
-          >
-            {promoLoading ? 'Redeeming...' : 'Redeem'}
-          </button>
-        </div>
-        <p className="text-[10px] text-[var(--color-text-muted)] mt-2">
-          Free credit is added to your balance instantly. One redemption per code.
-        </p>
-      </div>
+        ) : <Empty>No deposits or purchases in the last 12 months</Empty>}
+      </Card>
 
-      {/* Transaction History */}
-      <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] overflow-hidden">
-        <div className="p-4 border-b border-[var(--color-border)]">
-          <h2 className="text-sm font-semibold text-[var(--color-text)]">Transaction History</h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--color-border)] text-[var(--color-text-muted)]">
-                <th className="text-left p-3 font-medium">Invoice</th>
-                <th className="text-left p-3 font-medium">Date</th>
-                <th className="text-left p-3 font-medium">Description</th>
-                <th className="text-left p-3 font-medium">Method</th>
-                <th className="text-right p-3 font-medium">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {transactions.map((tx) => (
-                <tr key={tx.id} className="border-b border-[var(--color-border)] last:border-0">
-                  <td className="p-3">
-                    <span className="text-xs font-mono text-[var(--color-text-muted)]">
-                      {tx.invoice_number ?? '-'}
-                    </span>
-                  </td>
-                  <td className="p-3 text-xs text-[var(--color-text-muted)]">
-                    {new Date(tx.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="p-3 text-xs text-[var(--color-text)]">{tx.reason}</td>
-                  <td className="p-3">
-                    <span className="text-xs text-[var(--color-text-muted)]">
-                      {METHOD_LABELS[tx.payment_method] ?? tx.payment_method}
-                    </span>
-                  </td>
-                  <td className="p-3 text-right">
-                    <span className={`text-xs font-medium ${
-                      tx.type === 'credit' ? 'text-green-600' : 'text-red-500'
-                    }`}>
-                      {tx.type === 'credit' ? '+' : '-'}${Number(tx.amount_usd).toFixed(2)}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-              {transactions.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="p-6 text-center text-xs text-[var(--color-text-muted)]">
-                    No transactions yet
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatCard({ label, value, accent }: { label: string; value: string; accent?: 'green' | 'red' }) {
-  return (
-    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-      <p className="text-[10px] uppercase tracking-wider text-[var(--color-text-muted)] mb-1">{label}</p>
-      <p className="text-lg font-semibold" style={{
-        color: accent === 'green' ? '#059669' : accent === 'red' ? '#dc2626' : 'var(--color-text)',
-      }}>{value}</p>
+      <Card
+        title="Transactions"
+        subtitle={`${int(txs.total)} ${filter === 'all' ? 'in total' : 'matching'}`}
+        className="mt-4"
+        action={<a href="/api/billing/export" className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 font-medium text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]">Download CSV</a>}
+      >
+        <nav aria-label="Filter transactions" className="mb-3 flex flex-wrap gap-2">
+          {FILTERS.map(([k, label]) => (
+            <Link
+              key={k}
+              href={href(k)}
+              aria-current={filter === k ? 'page' : undefined}
+              className={`rounded-full border px-3 py-1 text-xs transition ${filter === k ? 'border-[var(--color-text)] bg-[var(--color-text)] text-[var(--color-bg)]' : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
+        {txs.rows.length === 0 ? <Empty>No transactions here yet</Empty> : (
+          <div className="-mx-5 overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead><tr className="border-b border-[var(--color-border)]">
+                <Th className="pl-5">Date</Th><Th>Description</Th><Th>Method</Th><Th>Invoice</Th><Th className="pr-5 text-right">Amount</Th>
+              </tr></thead>
+              <tbody>
+                {txs.rows.map((t) => (
+                  <tr key={t.id} className="border-b border-[var(--color-border)] last:border-0">
+                    <Td className="pl-5 text-xs text-[var(--color-text-muted)]">{new Date(t.created_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</Td>
+                    <Td className="text-[var(--color-text)]">{t.reason}</Td>
+                    <Td className="text-xs text-[var(--color-text-muted)]">{METHOD[t.method] ?? t.method}</Td>
+                    <Td className="font-mono text-xs text-[var(--color-text-muted)]">{t.invoice ?? '—'}</Td>
+                    <Td className={`pr-5 text-right font-semibold tabular-nums ${t.type === 'credit' ? 'text-[var(--viz-good-text)]' : 'text-[var(--color-text)]'}`}>
+                      {t.type === 'credit' ? '+' : '−'}{usd(t.amount)}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {pages > 1 && (
+          <div className="mt-3 flex items-center justify-between text-xs text-[var(--color-text-muted)]">
+            <span>Page {page} of {pages}</span>
+            <span className="flex gap-2">
+              {page > 1 && <Link href={href(filter, page - 1)} className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-[var(--color-text)]">← Newer</Link>}
+              {page < pages && <Link href={href(filter, page + 1)} className="rounded-lg border border-[var(--color-border)] px-3 py-1.5 text-[var(--color-text)]">Older →</Link>}
+            </span>
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

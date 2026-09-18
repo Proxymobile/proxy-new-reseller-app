@@ -1,268 +1,228 @@
-import { auth } from '@/lib/auth';
-import { queryOne } from '@/lib/db';
-import { redirect } from 'next/navigation';
-import { config, getPlan } from '@/config';
 import Link from 'next/link';
-import { BuyConfigurator } from './_components/BuyConfigurator';
+import { redirect } from 'next/navigation';
+import { auth } from '@/lib/auth';
+import { config } from '@/config';
 import {
-  IconWallet, IconKey, IconActivity, IconGlobe, IconClock, IconCheck,
-} from './_components/icons';
+  getAccountUser, getCustomerKey, getKeyUsage, getMoneySummary, getTransactions, getNetwork, proxyUsername,
+} from '@/lib/customer-data';
+import { Alert, Card, Empty, Meter, PageHeader, StatTile, Status, type Level } from '@/components/panel/ui';
+import { TimeChart } from '@/components/panel/TimeChart';
+import { ago, gb, int, usd } from '@/components/panel/format';
+import { countryInfo } from '@/lib/country-list';
+import { customGbPrice, customGbRatePerGB, FIRST_TOPUP_BONUS_USD } from '@/lib/pricing';
+import { QuickConnect } from './_components/QuickConnect';
 
-interface Customer {
-  id: string;
-  pak_key_id: string | null;
-  traffic_cap_gb: string;
-  traffic_used_gb: string;
-  plan_id: string | null;
-  expires_at: string | null;
-  enabled?: boolean;
-  created_at?: string;
-}
-
-interface UserInfo {
-  label: string;
-  enabled: boolean;
-  balance_usd: string;
-  created_at: string;
-}
-
-interface PurchaseStats {
-  total_gb: string;
-  count: string;
-  last_at: string | null;
-}
-
-export default async function DashboardPage() {
+export default async function DashboardOverview() {
   const session = await auth();
   if (!session?.user?.id) redirect('/login');
+  const uid = session.user.id;
 
-  const user = await queryOne<UserInfo>(
-    'SELECT label, enabled, balance_usd, created_at FROM users WHERE id = $1',
-    [session.user.id],
-  );
+  const [user, { key, error: keyError }, money, recent, stock] = await Promise.all([
+    getAccountUser(uid), getCustomerKey(uid), getMoneySummary(uid), getTransactions(uid, { limit: 6 }), getNetwork(),
+  ]);
+  if (!user) redirect('/login');
+  const usage = await getKeyUsage(key?.id ?? null, 30);
+  const used30 = usage.series.reduce((a, s) => a + s.gb, 0);
+  const avgPerDay = used30 / 30;
+  const daysOfData = key?.leftGb != null && avgPerDay > 0.001 ? key.leftGb / avgPerDay : null;
+  const gbAffordable = Math.floor(user.balance / customGbRatePerGB(1));
 
-  const customer = await queryOne<Customer>(
-    'SELECT id, pak_key_id, traffic_cap_gb, traffic_used_gb, plan_id, expires_at FROM customers WHERE user_id = $1',
-    [session.user.id],
-  );
+  const countries = [...config.countries]
+    .map((code) => ({ code, online: stock?.pools.mbl[code] ?? 0 }))
+    .sort((a, b) => b.online - a.online);
 
-  const purchaseStats = await queryOne<PurchaseStats>(
-    `SELECT
-       COALESCE(SUM(gb_amount), 0) AS total_gb,
-       COUNT(*) AS count,
-       MAX(created_at) AS last_at
-     FROM purchases p
-     WHERE p.customer_id = $1 AND p.status = 'completed'`,
-    [customer?.id ?? '00000000-0000-0000-0000-000000000000'],
-  );
+  // ── Key status
+  let status: { level: Level; label: string } = { level: 'neutral', label: 'No key yet' };
+  if (key) {
+    if (key.expired) status = { level: 'critical', label: 'Expired' };
+    else if (key.pct !== null && key.pct >= 100) status = { level: 'critical', label: 'Out of data' };
+    else if (!key.enabled) status = { level: 'serious', label: 'Paused' };
+    else status = { level: 'good', label: 'Active' };
+  }
 
-  const plan = customer?.plan_id ? getPlan(customer.plan_id) : null;
-  const usedGB = Number(customer?.traffic_used_gb ?? 0);
-  const capGB = Number(customer?.traffic_cap_gb ?? 0);
-  const remainingGB = Math.max(0, capGB - usedGB);
-  const usagePercent = capGB > 0 ? Math.min(100, (usedGB / capGB) * 100) : 0;
-  const daysLeft = customer?.expires_at
-    ? Math.max(0, Math.ceil((new Date(customer.expires_at).getTime() - Date.now()) / 86400000))
-    : null;
-  const balance = Number(user?.balance_usd ?? 0);
-  const totalPurchasedGB = Number(purchaseStats?.total_gb ?? 0);
-  const purchaseCount = Number(purchaseStats?.count ?? 0);
-  const lastPurchase = purchaseStats?.last_at ? new Date(purchaseStats.last_at) : null;
+  // ── Alerts
+  const alerts: { level: Level; title: string; body?: string; href?: string }[] = [];
+  if (keyError) alerts.push({ level: 'serious', title: 'Live usage is temporarily unavailable', body: keyError });
+  if (!user.enabled) alerts.push({ level: 'critical', title: 'Your account is disabled', body: `Contact ${config.brand.supportEmail} for help.`, href: '/dashboard/support' });
+  if (key) {
+    if (key.pct !== null && key.pct >= 100) {
+      alerts.push({ level: 'critical', title: 'You are out of bandwidth', body: 'Your proxies stop working until you add more GB.', href: '/dashboard/purchase' });
+    } else if (key.pct !== null && key.pct >= 85) {
+      const d = daysOfData !== null ? Math.max(1, Math.round(daysOfData)) : null;
+      alerts.push({ level: 'warning', title: `Only ${gb(key.leftGb ?? 0)} of data left`, body: d !== null ? `At your recent pace that lasts about ${d} day${d === 1 ? '' : 's'}.` : undefined, href: '/dashboard/purchase' });
+    }
+    if (key.expired) {
+      alerts.push({ level: 'critical', title: 'Your bandwidth has expired', body: 'Buy any amount to reactivate your key — it extends the expiry by 30 days.', href: '/dashboard/purchase' });
+    } else if (key.daysLeft !== null && key.daysLeft <= 7 && (key.leftGb ?? 1) > 0) {
+      alerts.push({
+        level: 'warning',
+        title: `Your data expires in ${key.daysLeft} day${key.daysLeft === 1 ? '' : 's'}`,
+        body: `Unused GB is lost after ${new Date(key.expiresAt!).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}. Any top-up extends it by 30 days.`,
+        href: '/dashboard/purchase',
+      });
+    }
+    if (!key.enabled && !key.expired && (key.pct ?? 0) < 100) {
+      alerts.push({ level: 'serious', title: 'Your key is paused', body: 'Connections are refused until you resume it.', href: '/dashboard/keys' });
+    }
+    if (user.balance < customGbPrice(1) && (key.pct ?? 0) >= 85) {
+      alerts.push({ level: 'neutral', title: 'Add funds to keep going', body: `Your balance is ${usd(user.balance)}; 1 GB costs ${usd(customGbPrice(1))}.`, href: '/dashboard/billing' });
+    }
+  }
 
-  const hasActiveKey = !!customer?.pak_key_id && !!plan;
+  const steps = [
+    { done: money.deposited > 0 || user.balance > 0, title: 'Add funds', body: `Top up from $5. Your first deposit gets $${FIRST_TOPUP_BONUS_USD} extra.`, href: '/dashboard/billing', cta: 'Add funds' },
+    { done: !!key, title: 'Buy bandwidth', body: 'Pick how many GB you need — from $5/GB at volume.', href: '/dashboard/purchase', cta: 'Buy bandwidth' },
+    { done: !!key?.lastUsedAt, title: 'Send your first request', body: 'Copy a proxy URL and paste it into your tool or script.', href: '/dashboard/keys', cta: 'Get a proxy URL' },
+  ];
+  const onboarding = !keyError && steps.some((s) => !s.done);
 
   return (
-    <div className="space-y-6">
-      {/* Welcome row */}
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--color-text)]">
-          Welcome{user?.label ? `, ${user.label}` : ''}
-        </h1>
-        <p className="text-sm text-[var(--color-text-muted)] mt-1">
-          {hasActiveKey
-            ? 'Your proxy plan is active. Generate URLs from the Keys page or top up below.'
-            : 'Get started by purchasing your first plan below — first request in under a minute.'}
-        </p>
-      </div>
+    <div>
+      <PageHeader title={`Hi, ${user.label}`} subtitle={key ? 'Your proxy account at a glance.' : 'Three steps and you are sending traffic through real mobile IPs.'}>
+        <div className="flex gap-2">
+          <Link href="/dashboard/purchase" className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-2 text-sm font-medium text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]">
+            Buy bandwidth
+          </Link>
+          <Link href="/dashboard/keys" className="rounded-lg bg-[var(--color-text)] px-3.5 py-2 text-sm font-semibold text-[var(--color-bg)] hover:opacity-90">
+            Get proxy URL
+          </Link>
+        </div>
+      </PageHeader>
 
-      {/* Stat cards row 1 — primary metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard
-          icon={<IconWallet className="h-4 w-4" />}
-          label="Balance"
-          value={`$${balance.toFixed(2)}`}
-          accent="primary"
-          action={<Link href="/dashboard/billing" className="text-[10px] text-[var(--color-primary)] hover:underline">Top up →</Link>}
-        />
-        <StatCard
-          icon={<IconKey className="h-4 w-4" />}
-          label="Active Keys"
-          value={hasActiveKey ? '1' : '0'}
-          subtext={hasActiveKey ? 'Plan active' : 'No active plan'}
-          accent={hasActiveKey ? 'success' : 'muted'}
-        />
-        <StatCard
-          icon={<IconActivity className="h-4 w-4" />}
-          label="Current Plan"
-          value={plan?.displayName ?? '—'}
-          subtext={plan ? `${plan.gb} GB · ${plan.durationDays} days` : 'No plan'}
-        />
-        <StatCard
-          icon={<IconCheck className="h-4 w-4" />}
-          label="Account Status"
-          value={user?.enabled ? 'Active' : 'Inactive'}
-          accent={user?.enabled ? 'success' : 'danger'}
-          subtext={user?.created_at ? `Member since ${new Date(user.created_at).toLocaleDateString()}` : ''}
-        />
-      </div>
-
-      {/* Stat cards row 2 — usage metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard
-          icon={<IconGlobe className="h-4 w-4" />}
-          label="Total Purchased"
-          value={`${totalPurchasedGB.toFixed(0)} GB`}
-          subtext={`${purchaseCount} purchase${purchaseCount === 1 ? '' : 's'}`}
-        />
-        <StatCard
-          icon={<IconActivity className="h-4 w-4" />}
-          label="Used GB"
-          value={`${usedGB.toFixed(2)} GB`}
-          subtext={capGB > 0 ? `of ${capGB} GB cap` : 'No active plan'}
-          accent="warning"
-        />
-        <StatCard
-          icon={<IconCheck className="h-4 w-4" />}
-          label="Remaining GB"
-          value={`${remainingGB.toFixed(2)} GB`}
-          subtext={capGB > 0 ? `${usagePercent.toFixed(1)}% used` : 'No active plan'}
-          accent={remainingGB > 1 ? 'success' : 'danger'}
-        />
-        <StatCard
-          icon={<IconClock className="h-4 w-4" />}
-          label="Last Purchase"
-          value={lastPurchase ? lastPurchase.toLocaleDateString() : '—'}
-          subtext={daysLeft !== null ? `${daysLeft} days remaining` : 'No active plan'}
-        />
-      </div>
-
-      {/* Active plan detail card with usage bar */}
-      {hasActiveKey && (
-        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6">
-          <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base font-semibold text-[var(--color-text)]">{plan!.displayName} Plan</h2>
-                <span
-                  className="inline-block rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                  style={{
-                    backgroundColor: user?.enabled ? '#dcfce7' : '#fee2e2',
-                    color: user?.enabled ? '#059669' : '#dc2626',
-                  }}
-                >
-                  {user?.enabled ? 'ACTIVE' : 'INACTIVE'}
-                </span>
-              </div>
-              <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                {plan!.gb} GB · {plan!.durationDays} days · ${(plan!.priceUsd / plan!.gb).toFixed(2)} per GB
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Link
-                href="/dashboard/keys"
-                className="rounded-lg bg-[var(--color-primary)] px-4 py-2 text-xs font-semibold text-white hover:opacity-90 transition shadow-sm shadow-[var(--color-primary)]/20"
-              >
-                Generate Proxies
-              </Link>
-              <Link
-                href="/dashboard/purchase"
-                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-2 text-xs font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-bg)] transition"
-              >
-                Top Up
-              </Link>
-            </div>
-          </div>
-
-          {capGB > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-[var(--color-text-muted)]">Bandwidth usage</span>
-                <span className="text-xs font-semibold text-[var(--color-text)]">
-                  {usedGB.toFixed(2)} / {capGB} GB · {usagePercent.toFixed(1)}%
-                </span>
-              </div>
-              <div className="h-2 rounded-full bg-[var(--color-bg)] overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all"
-                  style={{
-                    width: `${usagePercent}%`,
-                    backgroundColor: usagePercent > 90 ? '#ef4444' : usagePercent > 70 ? '#f59e0b' : 'var(--color-primary)',
-                  }}
-                />
-              </div>
-              <div className="flex items-center justify-between mt-2 text-[10px] text-[var(--color-text-muted)]">
-                <span>{remainingGB.toFixed(2)} GB remaining</span>
-                {customer?.expires_at && (
-                  <span>Expires {new Date(customer.expires_at).toLocaleDateString()}</span>
-                )}
-              </div>
-            </div>
-          )}
+      {alerts.length > 0 && (
+        <div className="mb-6 grid gap-2 md:grid-cols-2">
+          {alerts.map((a, i) => <Alert key={i} level={a.level} title={a.title} href={a.href}>{a.body}</Alert>)}
         </div>
       )}
 
-      {/* Configure & Buy section */}
-      <div>
-        <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
-          <div>
-            <h2 className="text-xl font-bold text-[var(--color-text)]">
-              {hasActiveKey ? 'Buy More Proxies' : 'Configure & Buy Mobile Proxies'}
-            </h2>
-            <p className="text-sm text-[var(--color-text-muted)] mt-1">
-              {hasActiveKey
-                ? 'Top up your account with another plan — keys stack and extend automatically.'
-                : 'Choose your bandwidth and pool — all countries included. Get your access key in seconds.'}
-            </p>
+      {onboarding && (
+        <Card title="Get started" subtitle={`${steps.filter((s) => s.done).length} of ${steps.length} done`} className="mb-6">
+          <ol className="grid gap-3 md:grid-cols-3">
+            {steps.map((s, i) => (
+              <li key={s.title} className={`rounded-xl border p-4 ${s.done ? 'border-[var(--color-border)] opacity-70' : 'border-[var(--color-primary)]/30 bg-[var(--color-primary)]/5'}`}>
+                <div className="flex items-center gap-2">
+                  <span
+                    aria-hidden
+                    className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${s.done ? 'bg-[var(--viz-good)] text-white' : 'bg-[var(--color-text)] text-[var(--color-bg)]'}`}
+                  >
+                    {s.done ? '✓' : i + 1}
+                  </span>
+                  <p className="text-sm font-semibold text-[var(--color-text)]">{s.title}{s.done && <span className="sr-only"> (done)</span>}</p>
+                </div>
+                <p className="mt-2 text-xs text-[var(--color-text-muted)]">{s.body}</p>
+                {!s.done && (
+                  <Link href={s.href} className="mt-3 inline-block text-xs font-semibold text-[var(--color-primary)] hover:underline">{s.cta} →</Link>
+                )}
+              </li>
+            ))}
+          </ol>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <StatTile
+          label="Balance"
+          value={usd(user.balance)}
+          hint={gbAffordable >= 1 ? `buys about ${int(gbAffordable)} GB` : 'top up to buy bandwidth'}
+          href="/dashboard/billing"
+        />
+        <StatTile
+          label="Data left"
+          value={key ? (key.capGb === null ? 'Unlimited' : gb(key.leftGb ?? 0)) : '—'}
+          delta={key && key.capGb ? <div className="mt-1.5"><Meter value={key.usedGb} max={key.capGb} /></div> : undefined}
+          hint={key ? (key.capGb ? `${gb(key.usedGb)} of ${gb(key.capGb)} used` : `${gb(key.usedGb)} used`) : 'buy bandwidth to get a key'}
+          href="/dashboard/purchase"
+        />
+        <StatTile
+          label="Used, last 30 days"
+          value={key ? gb(used30) : '—'}
+          hint={key ? (avgPerDay > 0 ? `≈ ${gb(avgPerDay)} per day${daysOfData !== null ? ` · lasts ~${Math.max(1, Math.round(daysOfData))} more days` : ''}` : 'no traffic recorded yet') : undefined}
+        />
+        <StatTile
+          label="Expires"
+          value={key?.expiresAt ? new Date(key.expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : key ? 'Never' : '—'}
+          hint={key?.expiresAt ? (key.expired ? 'expired — top up to reactivate' : `${key.daysLeft} days left · top-ups add 30 days`) : undefined}
+        />
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-5">
+        <Card
+          title="Data used per day"
+          subtitle={usage.firstSnapshot ? `Last 30 days · tracked since ${new Date(usage.firstSnapshot).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'Last 30 days · tracking starts today'}
+          className="xl:col-span-3"
+        >
+          <TimeChart
+            data={usage.series.map((s) => ({ day: s.day, gb: s.gb }))}
+            series={[{ key: 'gb', label: 'Used', slot: 1 }]}
+            format="gb"
+            height={210}
+            emptyNote={key ? 'Your daily usage appears here as you use your proxies' : 'Buy bandwidth to start tracking usage'}
+          />
+        </Card>
+
+        <Card
+          title="Connect now"
+          subtitle={key ? 'Copy a working proxy in one click' : 'Available once you have bandwidth'}
+          className="xl:col-span-2"
+          action={key && <Status level={status.level}>{status.label}</Status>}
+        >
+          {key ? (
+            <>
+              <QuickConnect username={proxyUsername()} secret={key.secret} countries={countries} disabled={status.level !== 'good'} />
+              <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--color-border)] pt-3 text-xs">
+                <div><dt className="text-[var(--color-text-muted)]">Last request</dt><dd className="mt-0.5 font-medium text-[var(--color-text)]">{ago(key.lastUsedAt)}</dd></div>
+                <div><dt className="text-[var(--color-text-muted)]">Key ID</dt><dd className="mt-0.5 truncate font-mono text-[var(--color-text)]">{key.id}</dd></div>
+              </dl>
+            </>
+          ) : (
+            <div className="py-6 text-center">
+              <p className="text-sm text-[var(--color-text-muted)]">You don&apos;t have a proxy key yet.</p>
+              <Link href="/dashboard/purchase" className="mt-3 inline-block rounded-lg bg-[var(--color-text)] px-4 py-2 text-sm font-semibold text-[var(--color-bg)]">Buy bandwidth</Link>
+              <p className="mt-3 text-[11px] text-[var(--color-text-muted)]">Have a promo code? <Link href="/dashboard/billing#promo" className="text-[var(--color-primary)] hover:underline">Redeem it</Link></p>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-3">
+        <Card title="Recent activity" action={<Link href="/dashboard/billing" className="text-[var(--color-primary)] hover:underline">All transactions →</Link>} className="xl:col-span-2">
+          {recent.rows.length === 0 ? <Empty>No transactions yet</Empty> : (
+            <ul className="divide-y divide-[var(--color-border)]">
+              {recent.rows.map((t) => (
+                <li key={t.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm text-[var(--color-text)]">{t.reason}</p>
+                    <p className="text-[11px] text-[var(--color-text-muted)]">{ago(t.created_at)}{t.invoice ? ` · ${t.invoice}` : ''}</p>
+                  </div>
+                  <span className={`shrink-0 text-sm font-semibold tabular-nums ${t.type === 'credit' ? 'text-[var(--viz-good-text)]' : 'text-[var(--color-text)]'}`}>
+                    {t.type === 'credit' ? '+' : '−'}{usd(t.amount)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-3 grid grid-cols-3 gap-3 border-t border-[var(--color-border)] pt-3 text-xs">
+            <div><p className="text-[var(--color-text-muted)]">Deposited</p><p className="mt-0.5 font-semibold tabular-nums text-[var(--color-text)]">{usd(money.deposited)}</p></div>
+            <div><p className="text-[var(--color-text-muted)]">Spent on bandwidth</p><p className="mt-0.5 font-semibold tabular-nums text-[var(--color-text)]">{usd(money.spent)}</p></div>
+            <div><p className="text-[var(--color-text-muted)]">GB bought</p><p className="mt-0.5 font-semibold tabular-nums text-[var(--color-text)]">{gb(money.gbBought)} <span className="font-normal text-[var(--color-text-muted)]">· {int(money.orders)} orders</span></p></div>
           </div>
-        </div>
-        <BuyConfigurator />
+        </Card>
+
+        <Card title="Network status" subtitle={stock ? `Mobile devices online now · ${int(stock.totals.mbl)} total` : 'Live status unavailable'}>
+          {!stock ? <Empty>Could not load network status</Empty> : (
+            <ul className="space-y-2">
+              {countries.slice(0, 8).map((c) => (
+                <li key={c.code} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="min-w-0 truncate text-[var(--color-text)]"><span aria-hidden className="mr-1.5">{countryInfo(c.code).flag}</span>{countryInfo(c.code).name}</span>
+                  {c.online > 0
+                    ? <span className="shrink-0 text-xs tabular-nums text-[var(--color-text-muted)]">{int(c.online)} online</span>
+                    : <Status level="warning">Low stock</Status>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
       </div>
     </div>
   );
 }
-
-function StatCard({
-  icon, label, value, subtext, action, accent,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  subtext?: string;
-  action?: React.ReactNode;
-  accent?: 'primary' | 'success' | 'warning' | 'danger' | 'muted';
-}) {
-  const accentColor =
-    accent === 'primary' ? 'text-[var(--color-primary)]' :
-    accent === 'success' ? 'text-emerald-600' :
-    accent === 'warning' ? 'text-amber-600' :
-    accent === 'danger' ? 'text-red-500' :
-    accent === 'muted' ? 'text-[var(--color-text-muted)]' :
-    'text-[var(--color-text)]';
-
-  return (
-    <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 hover:shadow-sm hover:border-[var(--color-primary)]/20 transition-all">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--color-bg)] text-[var(--color-text-muted)]">
-          {icon}
-        </div>
-        {action}
-      </div>
-      <p className="text-[10px] uppercase tracking-widest text-[var(--color-text-muted)] font-semibold mb-1">
-        {label}
-      </p>
-      <p className={`text-xl font-bold ${accentColor}`}>{value}</p>
-      {subtext && <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5 truncate">{subtext}</p>}
-    </div>
-  );
-}
-
