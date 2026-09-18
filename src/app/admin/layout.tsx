@@ -3,6 +3,11 @@ import { auth, signOut } from '@/lib/auth';
 import { isAdmin } from '@/lib/auth';
 import { redirect } from 'next/navigation';
 import { config } from '@/config';
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { AdminNav } from './_components/AdminNav';
+
+// Admin data is live — never serve a cached render.
+export const dynamic = 'force-dynamic';
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -11,57 +16,55 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const admin = await isAdmin(session.user.id);
   if (!admin) redirect('/dashboard');
 
+  const signOutForm = (
+    <form
+      action={async () => {
+        'use server';
+        await signOut({ redirectTo: '/' });
+      }}
+    >
+      <button type="submit" className="text-sm text-[var(--color-text-muted)] transition hover:text-[var(--color-text)]">
+        Sign out
+      </button>
+    </form>
+  );
+
   return (
-    <div className="min-h-screen flex">
-      <aside className="w-56 border-r border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col">
-        <div className="p-4 border-b border-[var(--color-border)]">
+    <div className="min-h-screen bg-[var(--color-bg)] lg:flex">
+      {/* Mobile / tablet top bar */}
+      <header className="sticky top-0 z-40 border-b border-[var(--color-border)] bg-[var(--color-surface)] lg:hidden">
+        <div className="flex items-center justify-between px-4 py-3">
+          <Link href="/admin" className="text-base font-bold text-[var(--color-text)]">
+            {config.brand.name}
+            <span className="ml-2 text-xs font-normal text-[var(--color-accent)]">Admin</span>
+          </Link>
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            {signOutForm}
+          </div>
+        </div>
+        <AdminNav variant="top" />
+      </header>
+
+      {/* Desktop sidebar */}
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)] lg:flex">
+        <div className="flex items-center justify-between border-b border-[var(--color-border)] p-4">
           <Link href="/admin" className="text-lg font-bold text-[var(--color-text)]">
             {config.brand.name}
             <span className="ml-2 text-xs font-normal text-[var(--color-accent)]">Admin</span>
           </Link>
+          <ThemeToggle />
         </div>
-        <nav className="flex-1 p-3 space-y-1">
-          <NavLink href="/admin">Overview</NavLink>
-          <NavLink href="/admin/accounts">Accounts</NavLink>
-          <NavLink href="/admin/accounts/create">Create Account</NavLink>
-          <NavLink href="/admin/billing">Billing</NavLink>
-          <NavLink href="/admin/promos">Promo Codes</NavLink>
-          <NavLink href="/admin/keys">All Keys</NavLink>
-          <NavLink href="/admin/audit">Audit Log</NavLink>
-          <NavLink href="/dashboard">Customer View</NavLink>
-        </nav>
-        <div className="p-4 border-t border-[var(--color-border)]">
-          <p className="text-xs text-[var(--color-text-muted)] truncate mb-2">
-            {session.user.label ?? 'Admin'}
-          </p>
-          <form
-            action={async () => {
-              'use server';
-              await signOut({ redirectTo: '/' });
-            }}
-          >
-            <button
-              type="submit"
-              className="w-full text-left text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition"
-            >
-              Sign out
-            </button>
-          </form>
+        <AdminNav variant="side" />
+        <div className="border-t border-[var(--color-border)] p-4">
+          <p className="mb-2 truncate text-xs text-[var(--color-text-muted)]">{session.user.label ?? 'Admin'}</p>
+          {signOutForm}
         </div>
       </aside>
 
-      <main className="flex-1 p-8">{children}</main>
+      <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <div className="mx-auto max-w-7xl">{children}</div>
+      </main>
     </div>
-  );
-}
-
-function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="block rounded-lg px-3 py-2 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] transition"
-    >
-      {children}
-    </Link>
   );
 }
