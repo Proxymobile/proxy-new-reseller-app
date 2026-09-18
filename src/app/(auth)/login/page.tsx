@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import { config } from '@/config';
 
-type Mode = 'login' | 'signup' | 'signup-result';
+type Mode = 'login' | 'signup' | 'signup-result' | 'staff';
 
 export default function LoginPage() {
   const [mode, setMode] = useState<Mode>('login');
@@ -35,6 +35,11 @@ export default function LoginPage() {
 
   // Wallet state
   const [walletLoading, setWalletLoading] = useState(false);
+
+  // Staff (email + password) state
+  const [staffEmail, setStaffEmail] = useState('');
+  const [staffPassword, setStaffPassword] = useState('');
+  const [staffLoading, setStaffLoading] = useState(false);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -83,6 +88,27 @@ export default function LoginPage() {
     } catch {
       setSignupLoading(false);
       setError('Something went wrong');
+    }
+  }
+
+  async function handleStaffLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setStaffLoading(true);
+
+    const result = await signIn('email-password', {
+      email: staffEmail.trim(),
+      password: staffPassword,
+      redirect: false,
+    });
+
+    setStaffLoading(false);
+
+    if (result?.error) {
+      // Deliberately vague: never reveal whether the email exists.
+      setError('Incorrect email or password');
+    } else {
+      window.location.href = '/admin';
     }
   }
 
@@ -276,6 +302,97 @@ export default function LoginPage() {
                 </button>
 
               </div>
+
+              <p className="mt-6 text-center">
+                <button
+                  onClick={() => { setMode('staff'); setError(''); }}
+                  className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:underline"
+                >
+                  Staff sign-in
+                </button>
+              </p>
+            </motion.div>
+          )}
+
+          {/* === STAFF (EMAIL + PASSWORD) MODE === */}
+          {mode === 'staff' && (
+            <motion.div
+              key="staff"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.25 }}
+            >
+              <div className="text-center mb-6">
+                <h1 className="text-lg font-semibold text-[var(--color-text)]">Staff sign-in</h1>
+                <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+                  Email and password for the admin panel
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6 shadow-premium edge-light">
+                <form onSubmit={handleStaffLogin} className="space-y-4">
+                  <div>
+                    <label htmlFor="staffEmail" className="block text-xs font-medium text-[var(--color-text-muted)] mb-2">
+                      Email
+                    </label>
+                    <input
+                      id="staffEmail"
+                      type="email"
+                      required
+                      autoFocus
+                      autoComplete="username"
+                      value={staffEmail}
+                      onChange={(e) => setStaffEmail(e.target.value)}
+                      className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-2.5 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]/40 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] transition-all"
+                      placeholder="name@proxymobile.shop"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="staffPassword" className="block text-xs font-medium text-[var(--color-text-muted)] mb-2">
+                      Password
+                    </label>
+                    <input
+                      id="staffPassword"
+                      type="password"
+                      required
+                      autoComplete="current-password"
+                      value={staffPassword}
+                      onChange={(e) => setStaffPassword(e.target.value)}
+                      className="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-2.5 text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)]/40 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 focus:border-[var(--color-primary)] transition-all"
+                      placeholder="••••••••••••"
+                    />
+                  </div>
+
+                  {error && (
+                    <motion.p
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-xs text-red-500 text-center"
+                    >
+                      {error}
+                    </motion.p>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={staffLoading}
+                    className="w-full rounded-lg bg-[var(--color-primary)] px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 transition-colors shadow-sm shadow-[var(--color-primary)]/25 disabled:opacity-30"
+                  >
+                    {staffLoading ? 'Signing in...' : 'Sign in'}
+                  </button>
+                </form>
+              </div>
+
+              <p className="mt-6 text-center">
+                <button
+                  onClick={() => { setMode('login'); setError(''); }}
+                  className="text-xs text-[var(--color-primary)] hover:underline"
+                >
+                  Back to access code sign-in
+                </button>
+              </p>
             </motion.div>
           )}
 

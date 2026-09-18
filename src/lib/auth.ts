@@ -4,6 +4,7 @@ import { timingSafeEqual, randomBytes, createHash } from 'crypto';
 import { queryOne, query } from '@/lib/db';
 import { authConfig } from '@/lib/auth.config';
 import { verifyLoginChallenge, buildLoginMessage, verifyEthSignature } from '@/lib/wallet';
+import { hashPassword, verifyPassword, passwordProblem } from '@/lib/password';
 
 export interface DbUser {
   id: string;
@@ -12,6 +13,8 @@ export interface DbUser {
   access_code: string;
   role: string;
   enabled: boolean;
+  password_hash?: string | null;
+  must_change_password?: boolean;
 }
 
 interface WalletLink {
@@ -19,6 +22,15 @@ interface WalletLink {
   address: string;
   verified: boolean;
 }
+
+/**
+ * A real scrypt hash of an unguessable value, used as the comparison target
+ * when no account matches. Keeps failed logins constant-time.
+ */
+const DUMMY_PASSWORD_HASH =
+  'scrypt$32768$8$1$' +
+  'ZHVtbXlzYWx0Zm9ydGltaW5n$' +
+  'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
 
 function safeCompare(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -119,9 +131,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const adminPassword = process.env.ADMIN_PASSWORD;
         if (!adminPassword) return null;
 
+        // This is the most privileged credential in the system and the only
+        // one that is a single shared secret, so it gets the same brute-force
+        // budget as the others. Without this it was the one login path an
+        // attacker could hammer without limit. (Retiring this provider in
+        // favour of per-admin email+password: see docs/ADMIN-LOGINS.md.)
+        if (!(await checkRateLimit('admin-password'))) return null;
+
         // Timing-safe comparison
-        if (password.length !== adminPassword.length) return null;
-        if (!timingSafeEqual(Buffer.from(password), Buffer.from(adminPassword))) return null;
+        if (password.length !== adminPassword.length || !timingSafeEqual(Buffer.from(password), Buffer.from(adminPassword))) {
+          await recordAttempt('admin-password', false);
+          return null;
+        }
+        await recordAttempt('admin-password', true);
 
         // Find the first admin user
         const admin = await queryOne<DbUser>(
@@ -136,6 +158,53 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           email: admin.email,
           role: admin.role,
           label: admin.label,
+          walletRequired: false,
+          walletChain: null,
+        };
+      },
+    }),
+    Credentials({
+      id: 'email-password',
+      name: 'Email & Password',
+      credentials: {
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' },
+      },
+      async authorize(credentials) {
+        const email = (credentials?.email as string | undefined)?.trim().toLowerCase();
+        const password = credentials?.password as string | undefined;
+        if (!email || !password) return null;
+
+        // Rate-limited on the email, reusing the access-code attempt table so
+        // brute force against either credential shares one budget.
+        const allowed = await checkRateLimit(`email:${email}`);
+        if (!allowed) return null;
+
+        const user = await queryOne<DbUser>(
+          `SELECT id, label, email, access_code, role, enabled, password_hash, must_change_password
+           FROM users WHERE lower(email) = $1`,
+          [email],
+        );
+
+        // Always run a real scrypt verification, even when no such account
+        // exists, so "no user" and "wrong password" take the same time to
+        // answer and the endpoint cannot be used to enumerate staff emails.
+        const ok = await verifyPassword(password, user?.password_hash ?? DUMMY_PASSWORD_HASH);
+
+        if (!user || !user.enabled || !user.password_hash || !ok) {
+          await recordAttempt(`email:${email}`, false);
+          return null;
+        }
+
+        await recordAttempt(`email:${email}`, true);
+        await query('UPDATE users SET last_login_at = now() WHERE id = $1', [user.id]).catch(() => {});
+
+        return {
+          id: user.id,
+          name: user.label,
+          email: user.email,
+          role: user.role,
+          label: user.label,
           walletRequired: false,
           walletChain: null,
         };
@@ -256,4 +325,57 @@ export async function regenerateAccessCode(userId: string): Promise<string | nul
 export async function isAdmin(userId: string): Promise<boolean> {
   const user = await queryOne<{ role: string }>('SELECT role FROM users WHERE id = $1', [userId]);
   return user?.role === 'admin';
+}
+
+/**
+ * Sets (or replaces) an account's login password.
+ * Returns an error message when the password is too weak, null on success.
+ */
+export async function setUserPassword(
+  userId: string,
+  password: string,
+  opts: { mustChange?: boolean } = {},
+): Promise<string | null> {
+  const problem = passwordProblem(password);
+  if (problem) return problem;
+
+  const hash = await hashPassword(password);
+  await query(
+    `UPDATE users
+     SET password_hash = $2, password_updated_at = now(), must_change_password = $3, updated_at = now()
+     WHERE id = $1`,
+    [userId, hash, opts.mustChange ?? false],
+  );
+  return null;
+}
+
+/** Removes password login from an account, leaving its access code intact. */
+export async function clearUserPassword(userId: string): Promise<void> {
+  await query(
+    `UPDATE users
+     SET password_hash = NULL, password_updated_at = NULL, must_change_password = false, updated_at = now()
+     WHERE id = $1`,
+    [userId],
+  );
+}
+
+/**
+ * Creates an admin that signs in with email + password.
+ * The access code is still generated, so either credential works.
+ */
+export async function createAdminLogin(opts: { label: string; email: string; password: string }) {
+  const problem = passwordProblem(opts.password);
+  if (problem) return { error: problem } as const;
+
+  const email = opts.email.trim().toLowerCase();
+  const existing = await queryOne<{ id: string }>('SELECT id FROM users WHERE lower(email) = $1', [email]);
+  if (existing) return { error: 'An account with that email already exists' } as const;
+
+  const user = await createAccount(opts.label.trim(), 'admin', email);
+  if (!user) return { error: 'Failed to create account' } as const;
+
+  const passwordProblemMessage = await setUserPassword(user.id, opts.password, { mustChange: true });
+  if (passwordProblemMessage) return { error: passwordProblemMessage } as const;
+
+  return { user } as const;
 }
