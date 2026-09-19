@@ -5,6 +5,7 @@ import { config } from '@/config';
 import { getAccountUser, getCustomerKey } from '@/lib/customer-data';
 import { Card, PageHeader } from '@/components/panel/ui';
 import { MessageComposer } from './MessageComposer';
+import { TelegramButton } from '@/components/TelegramLink';
 
 const FAQS: [string, string][] = [
   ['How do I start using my proxies?', 'Buy bandwidth, then open Proxy setup. Pick a country and rotation, press Generate and paste the URL into your tool — it works in anything that supports an HTTP or SOCKS5 proxy.'],
@@ -34,7 +35,8 @@ export default async function SupportPage() {
     <div>
       <PageHeader title="Help & support" subtitle="Answers to common questions, and a direct line to our team." />
 
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Channel title="Telegram" body="Fastest route to a human" action={config.brand.supportTelegram} href={config.brand.supportTelegramUrl} />
         <Channel title="Email" body="Replies within 24 hours" action={config.brand.supportEmail} href={`mailto:${config.brand.supportEmail}`} />
         <Channel title="Setup guide" body="Code examples for curl, Python, Node and Playwright" action="Open the API guide" href="/mobile-proxy-api" />
         <Channel title="Generate a proxy" body="Build connection strings for any country" action="Open Proxy setup" href="/dashboard/keys" />
@@ -57,6 +59,10 @@ export default async function SupportPage() {
 
         <Card title="Message us" subtitle="Opens your email app with the details filled in" className="lg:col-span-2">
           <MessageComposer to={config.brand.supportEmail} diagnostics={diagnostics} />
+          <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+            <p className="mb-3 text-xs text-[var(--color-text-muted)]">Prefer chat? We answer fastest on Telegram.</p>
+            <TelegramButton />
+          </div>
         </Card>
       </div>
     </div>
@@ -64,7 +70,10 @@ export default async function SupportPage() {
 }
 
 function Channel({ title, body, action, href }: { title: string; body: string; action: string; href: string }) {
-  const external = href.startsWith('mailto:');
+  // mailto: and absolute URLs (Telegram) both leave the app, so neither should
+  // go through next/link — and the http(s) ones need target/rel.
+  const external = href.startsWith('mailto:') || href.startsWith('http');
+  const newTab = href.startsWith('http');
   const inner = (
     <div className="h-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 transition hover:border-[var(--color-primary)]/40">
       <p className="text-sm font-semibold text-[var(--color-text)]">{title}</p>
@@ -72,5 +81,15 @@ function Channel({ title, body, action, href }: { title: string; body: string; a
       <p className="mt-3 truncate text-xs font-medium text-[var(--color-primary)]">{action} →</p>
     </div>
   );
-  return external ? <a href={href} className="block">{inner}</a> : <Link href={href} className="block">{inner}</Link>;
+  return external ? (
+    <a
+      href={href}
+      className="block"
+      {...(newTab ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+    >
+      {inner}
+    </a>
+  ) : (
+    <Link href={href} className="block">{inner}</Link>
+  );
 }

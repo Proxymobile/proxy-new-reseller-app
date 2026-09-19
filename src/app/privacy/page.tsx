@@ -83,7 +83,7 @@ export default function PrivacyPage() {
             <section>
               <h2 className="text-lg font-semibold text-[var(--color-text)] mb-2">6. Contact</h2>
               <p>
-                Privacy questions or requests: <a className="text-[var(--color-primary)] hover:underline" href={`mailto:${config.brand.supportEmail}`}>{config.brand.supportEmail}</a>.
+                Privacy questions or requests: <a className="text-[var(--color-primary)] hover:underline" href={`mailto:${config.brand.supportEmail}`}>{config.brand.supportEmail}</a>, or <a className="text-[var(--color-primary)] hover:underline" href={config.brand.supportTelegramUrl} target="_blank" rel="noopener noreferrer">{config.brand.supportTelegram}</a> on Telegram.
               </p>
             </section>
           </div>

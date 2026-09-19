@@ -11,6 +11,7 @@ import { COUNTRIES } from '@/lib/countries';
 import { GATEWAY_DISPLAY_HOST, GATEWAY_HTTP_PORT, gatewayDisplayEndpoint } from '@/lib/gateway';
 import { HOME_FAQS } from '@/lib/home-faqs';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { TelegramFooterLink } from '@/components/TelegramLink';
 
 // ─── Animation Variants ────────────────────────────────────
 
@@ -2385,6 +2386,9 @@ export default function LandingPage() {
                 </li>
                 <li>
                   <a href="/#faq" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">FAQ</a>
+                </li>
+                <li>
+                  <TelegramFooterLink label="Support @proxymobilesupport" />
                 </li>
                 <li>
                   <Link href="/terms" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">Terms of Service</Link>

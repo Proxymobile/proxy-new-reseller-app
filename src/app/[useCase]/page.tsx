@@ -7,6 +7,7 @@ import { GB_TIERS, FIRST_TOPUP_BONUS_USD } from '@/lib/pricing';
 import { COUNTRIES, getCountry } from '@/lib/countries';
 import { JsonLd } from '@/components/JsonLd';
 import { UseCaseLinks } from '@/components/UseCaseLinks';
+import { TelegramFooterLink } from '@/components/TelegramLink';
 import {
   SITE_URL,
   SITE_NAME,
@@ -485,6 +486,7 @@ export default async function UseCasePageRoute({ params }: { params: Promise<Par
               &copy; {new Date().getFullYear()} {SITE_NAME} · All rights reserved
             </span>
             <div className="flex items-center gap-4">
+              <TelegramFooterLink label="Support @proxymobilesupport" />
               <Link href="/terms" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]">Terms</Link>
               <Link href="/privacy" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]">Privacy</Link>
             </div>

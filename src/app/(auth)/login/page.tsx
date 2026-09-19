@@ -548,6 +548,10 @@ export default function LoginPage() {
           <a href={`mailto:${config.brand.supportEmail}`} className="hover:underline">
             Contact support
           </a>
+          {' · '}
+          <a href={config.brand.supportTelegramUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">
+            Telegram {config.brand.supportTelegram}
+          </a>
         </p>
       </motion.div>
     </div>

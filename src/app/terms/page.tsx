@@ -103,7 +103,7 @@ export default function TermsPage() {
             <section>
               <h2 className="text-lg font-semibold text-[var(--color-text)] mb-2">8. Contact</h2>
               <p>
-                Questions about these Terms: <a className="text-[var(--color-primary)] hover:underline" href={`mailto:${config.brand.supportEmail}`}>{config.brand.supportEmail}</a>.
+                Questions about these Terms: <a className="text-[var(--color-primary)] hover:underline" href={`mailto:${config.brand.supportEmail}`}>{config.brand.supportEmail}</a>, or <a className="text-[var(--color-primary)] hover:underline" href={config.brand.supportTelegramUrl} target="_blank" rel="noopener noreferrer">{config.brand.supportTelegram}</a> on Telegram.
               </p>
             </section>
           </div>

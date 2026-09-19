@@ -99,7 +99,7 @@ export default function SettingsPage() {
               <Row label="Account ID" value={<span className="flex items-center gap-2"><code className="font-mono text-xs">{profile.id.slice(0, 8)}</code><CopyButton text={profile.id} /></span>} />
             </dl>
           )}
-          <p className="mt-3 text-[11px] text-[var(--color-text-muted)]">To change your name or email, contact <a href={`mailto:${config.brand.supportEmail}`} className="text-[var(--color-primary)] hover:underline">{config.brand.supportEmail}</a> and include your account ID.</p>
+          <p className="mt-3 text-[11px] text-[var(--color-text-muted)]">To change your name or email, contact <a href={`mailto:${config.brand.supportEmail}`} className="text-[var(--color-primary)] hover:underline">{config.brand.supportEmail}</a> or <a href={config.brand.supportTelegramUrl} target="_blank" rel="noopener noreferrer" className="text-[var(--color-primary)] hover:underline">{config.brand.supportTelegram}</a> on Telegram, and include your account ID.</p>
         </Card>
 
         <Card title="Access code" subtitle="Your password — anyone with this code can sign in as you">

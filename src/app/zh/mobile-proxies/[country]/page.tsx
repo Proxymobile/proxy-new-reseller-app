@@ -8,6 +8,7 @@ import { proxies } from '@/lib/proxies';
 import { COUNTRIES_ZH as COUNTRIES, getCountryZh as getCountry, siblingCountriesZh as siblingCountries } from '@/lib/countries-zh';
 import { JsonLd } from '@/components/JsonLd';
 import { UseCaseLinksZh } from '@/components/UseCaseLinksZh';
+import { TelegramFooterLink } from '@/components/TelegramLink';
 import {
   SITE_NAME,
   absoluteUrl,
@@ -330,6 +331,7 @@ export default async function CountryPageZh({ params }: { params: Promise<Params
               &copy; {new Date().getFullYear()} {SITE_NAME} · 保留所有权利
             </span>
             <div className="flex items-center gap-4">
+              <TelegramFooterLink label="客服 @proxymobilesupport" />
               <Link href="/terms" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]">服务条款</Link>
               <Link href="/privacy" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]">隐私政策</Link>
             </div>

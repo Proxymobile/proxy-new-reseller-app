@@ -25,6 +25,18 @@ export function organizationJsonLd() {
     description:
       'ProxyMobile provides pay-per-GB mobile proxies on real 4G/5G/LTE carrier IPs and a residential pool across 10+ countries.',
     email: 'support@proxymobile.shop',
+    // Declared so search engines can surface the live support channel
+    // alongside the brand, not just the mailbox.
+    sameAs: ['https://t.me/proxymobilesupport'],
+    contactPoint: [
+      {
+        '@type': 'ContactPoint',
+        contactType: 'customer support',
+        email: 'support@proxymobile.shop',
+        url: 'https://t.me/proxymobilesupport',
+        availableLanguage: ['en', 'zh-Hans'],
+      },
+    ],
   };
 }
 

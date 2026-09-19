@@ -3,6 +3,10 @@ export const config = {
     name: 'ProxyMobile',
     tagline: 'Premium 4G/5G/LTE mobile proxies. Real devices. One URL.',
     supportEmail: 'support@proxymobile.shop',
+    // Live support channel. Keep the handle and the URL in lockstep — the
+    // handle is what people read, the URL is what they click.
+    supportTelegram: '@proxymobilesupport',
+    supportTelegramUrl: 'https://t.me/proxymobilesupport',
     primaryColor: '#6366f1',
     accentColor: '#10b981',
   },

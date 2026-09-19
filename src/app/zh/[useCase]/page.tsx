@@ -7,6 +7,7 @@ import { GB_TIERS, FIRST_TOPUP_BONUS_USD } from '@/lib/pricing';
 import { COUNTRIES_ZH as COUNTRIES, getCountryZh as getCountry } from '@/lib/countries-zh';
 import { JsonLd } from '@/components/JsonLd';
 import { UseCaseLinksZh } from '@/components/UseCaseLinksZh';
+import { TelegramFooterLink } from '@/components/TelegramLink';
 import {
   SITE_NAME,
   absoluteUrl,
@@ -488,6 +489,7 @@ export default async function UseCasePageRouteZh({ params }: { params: Promise<P
               &copy; {new Date().getFullYear()} {SITE_NAME} · 保留所有权利
             </span>
             <div className="flex items-center gap-4">
+              <TelegramFooterLink label="客服 @proxymobilesupport" />
               <Link href="/terms" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]">服务条款</Link>
               <Link href="/privacy" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)]">隐私政策</Link>
             </div>

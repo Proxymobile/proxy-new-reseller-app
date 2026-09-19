@@ -43,7 +43,7 @@ export default async function DashboardOverview() {
   // ── Alerts
   const alerts: { level: Level; title: string; body?: string; href?: string }[] = [];
   if (keyError) alerts.push({ level: 'serious', title: 'Live usage is temporarily unavailable', body: keyError });
-  if (!user.enabled) alerts.push({ level: 'critical', title: 'Your account is disabled', body: `Contact ${config.brand.supportEmail} for help.`, href: '/dashboard/support' });
+  if (!user.enabled) alerts.push({ level: 'critical', title: 'Your account is disabled', body: `Contact ${config.brand.supportEmail} or ${config.brand.supportTelegram} on Telegram for help.`, href: '/dashboard/support' });
   if (key) {
     if (key.pct !== null && key.pct >= 100) {
       alerts.push({ level: 'critical', title: 'You are out of bandwidth', body: 'Your proxies stop working until you add more GB.', href: '/dashboard/purchase' });

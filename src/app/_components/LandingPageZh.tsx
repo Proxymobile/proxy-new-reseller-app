@@ -14,6 +14,7 @@ import { GATEWAY_DISPLAY_HOST, GATEWAY_HTTP_PORT, gatewayDisplayEndpoint } from 
 import { HOME_FAQS_ZH as HOME_FAQS } from '@/lib/home-faqs-zh';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { UseCaseLinksZh } from '@/components/UseCaseLinksZh';
+import { TelegramFooterLink } from '@/components/TelegramLink';
 
 // ─── Animation Variants ────────────────────────────────────
 
@@ -2295,6 +2296,9 @@ export default function LandingPageZh() {
                 </li>
                 <li>
                   <a href="/zh#faq" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">常见问题</a>
+                </li>
+                <li>
+                  <TelegramFooterLink label="客服 @proxymobilesupport" />
                 </li>
                 <li>
                   <Link href="/terms" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors">服务条款</Link>
