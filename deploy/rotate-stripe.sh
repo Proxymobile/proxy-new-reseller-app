@@ -201,11 +201,19 @@ fi
 chmod 600 "$ENV_FILE"
 
 # ─── Restart just the app so it picks up the new env ───
+# docker-compose.prod.yml declares ${DB_PASSWORD:?...}, so compose refuses to
+# run without it. Without this export the restart fails *after* the new keys
+# are already written — leaving the app live on the old account while this
+# script reports success. Mirror what deploy/remote-deploy.sh does.
+export DB_PASSWORD=$(grep DATABASE_URL "$ENV_FILE" | sed 's/.*:\(.*\)@.*/\1/')
+: "${DB_PASSWORD:?could not parse DB password from DATABASE_URL in $ENV_FILE}"
+
 echo "==> Restarting app container..."
 cd "$APP_DIR/deploy"
-docker compose -f docker-compose.prod.yml up -d --force-recreate app
+COMPOSE="docker compose --env-file $ENV_FILE -f docker-compose.prod.yml"
+$COMPOSE up -d --force-recreate app
 sleep 4
-docker compose -f docker-compose.prod.yml ps app
+$COMPOSE ps app
 
 echo
 echo "==> Done. Now verify, in this order:"
@@ -214,5 +222,7 @@ echo "       any WARNING printed there before taking payments."
 echo "    2. Send a test event from that endpoint and confirm a 200."
 echo "    3. Make a real \$5 deposit and check the balance credits (plus the"
 echo "       \$2 welcome bonus if that account has never deposited before)."
-echo "    4. Roll back at any point with: cp $BACKUP $ENV_FILE && \\"
-echo "       docker compose -f docker-compose.prod.yml up -d --force-recreate app"
+echo "    4. Roll back at any point with:"
+echo "       cp $BACKUP $ENV_FILE && cd $APP_DIR/deploy && \\"
+echo "       export DB_PASSWORD=\$(grep DATABASE_URL $ENV_FILE | sed 's/.*:\\(.*\\)@.*/\\1/') && \\"
+echo "       docker compose --env-file $ENV_FILE -f docker-compose.prod.yml up -d --force-recreate app"
