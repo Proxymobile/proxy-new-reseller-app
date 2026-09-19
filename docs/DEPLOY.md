@@ -111,3 +111,40 @@ yourdomain.com {
 ```
 3. Update `.env`: `AUTH_URL=https://yourdomain.com`
 4. Redeploy
+
+## Database migrations
+
+`deploy/remote-deploy.sh` applies migrations automatically, between building the
+image and starting the app container — schema first, code second, so the app is
+never live against a schema it predates.
+
+Applied files are recorded in `schema_migrations`, so each runs exactly once
+even if it is not idempotent. Output shows `apply`/`skip` per file.
+
+`db/schema.sql` is the **bootstrap for an empty database only**. It seeds rows
+as well as creating tables, so it is not a desired-state file and is skipped
+whenever a `users` table already exists. After bootstrap, migrations are the
+only path forward.
+
+### Seeding the ledger on a database that predates it
+
+A database migrated by hand before `schema_migrations` existed must have its
+already-applied filenames recorded once, or every old migration replays on the
+next deploy:
+
+```sql
+INSERT INTO schema_migrations (filename) VALUES ('002_billing.sql')
+ON CONFLICT DO NOTHING;   -- repeat per already-applied file
+```
+
+Production was seeded this way on 2026-09-19 for 002–007.
+
+### Known drift
+
+`promo_codes` carries a `promo_codes_grant_gb_whole` constraint in production
+that exists in no file under `db/`. Both `db/schema.sql` and
+`db/migrations/004_promo_grant_gb.sql` try to set `START200` to `grant_gb 0.2`,
+which that constraint rejects, and production's live value is 7 GB. A fresh
+install would therefore not reproduce production's promo configuration. Resolve
+by deciding the intended value and capturing both it and the constraint in a
+new migration.

@@ -19,26 +19,7 @@ rsync -avz --delete \
   "$SERVER:$APP_DIR/"
 
 echo "==> Building and starting on server..."
-ssh -i "$DEPLOY_KEY" "$SERVER" bash -s <<'REMOTE'
-set -euo pipefail
-cd /opt/proxy-reseller
-
-# Production credentials must be configured before a release.
-if [ ! -f .env ]; then
-  echo "Configure /opt/proxy-reseller/.env with production credentials before deploying." >&2
-  exit 1
-fi
-
-# Extract DB_PASSWORD for compose
-export DB_PASSWORD=$(grep DATABASE_URL .env | sed 's/.*:\(.*\)@.*/\1/')
-
-cd deploy
-docker compose --env-file ../.env -f docker-compose.prod.yml build --no-cache
-# -T and </dev/null: this script arrives on stdin, and an interactive `run`
-# would swallow the remaining lines, silently skipping `up` below.
-docker compose --env-file ../.env -f docker-compose.prod.yml run -T --rm --no-deps app node scripts/check-production-env.mjs < /dev/null
-docker compose --env-file ../.env -f docker-compose.prod.yml up -d --wait --wait-timeout 120
-
-docker compose --env-file ../.env -f docker-compose.prod.yml ps
-echo "==> Deployment complete!"
-REMOTE
+# The server-side half is a file (rsynced above), not a heredoc on stdin:
+# see the comment at the top of remote-deploy.sh for why that matters.
+# -n closes stdin so nothing on either side can consume it by accident.
+ssh -n -i "$DEPLOY_KEY" "$SERVER" "bash $APP_DIR/deploy/remote-deploy.sh"
