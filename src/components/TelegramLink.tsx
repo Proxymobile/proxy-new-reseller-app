@@ -46,6 +46,26 @@ export function TelegramInlineLink({ label }: { label?: string }) {
   );
 }
 
+/**
+ * Button sized to sit in a dashboard header action row next to the page's own
+ * buttons. Telegram-tinted rather than filled, so it reads as a third option
+ * without competing with the primary call to action beside it.
+ */
+export function TelegramActionButton({ label = 'Support' }: { label?: string }) {
+  return (
+    <a
+      href={config.brand.supportTelegramUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={`Message support on Telegram (${config.brand.supportTelegram})`}
+      className="inline-flex items-center gap-1.5 rounded-lg border border-[#229ED9]/35 bg-[#229ED9]/10 px-3.5 py-2 text-sm font-medium text-[#1B87BA] transition hover:bg-[#229ED9]/20 dark:text-[#4FB6E6]"
+    >
+      <TelegramGlyph className="h-4 w-4" />
+      {label}
+    </a>
+  );
+}
+
 /** Prominent button, for the support page and anywhere we want the fast path. */
 export function TelegramButton({ label }: { label?: string }) {
   return (

@@ -7,6 +7,7 @@ import {
 } from '@/lib/customer-data';
 import { Alert, Card, Empty, Meter, PageHeader, StatTile, Status, type Level } from '@/components/panel/ui';
 import { TimeChart } from '@/components/panel/TimeChart';
+import { TelegramActionButton } from '@/components/TelegramLink';
 import { ago, gb, int, usd } from '@/components/panel/format';
 import { countryInfo } from '@/lib/country-list';
 import { customGbPrice, customGbRatePerGB, FIRST_TOPUP_BONUS_USD } from '@/lib/pricing';
@@ -79,7 +80,8 @@ export default async function DashboardOverview() {
   return (
     <div>
       <PageHeader title={`Hi, ${user.label}`} subtitle={key ? 'Your proxy account at a glance.' : 'Three steps and you are sending traffic through real mobile IPs.'}>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <TelegramActionButton />
           <Link href="/dashboard/purchase" className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-2 text-sm font-medium text-[var(--color-text)] hover:bg-[var(--color-surface-hover)]">
             Buy bandwidth
           </Link>
